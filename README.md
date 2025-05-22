@@ -208,40 +208,7 @@ While command-line arguments are preferred for run-specific changes, the script 
 
 If you modify these directly in `translate.py`, remember to save the file.
 
-### H. Troubleshooting and Tips
-
-* **`ModuleNotFoundError`:** You haven't installed a required package or haven't activated the correct conda environment. Ensure `(translate_book_env)` is in your prompt and run `pip install <missing_package_name>`.
-* **`conda: command not found` (in regular cmd/PowerShell):** Miniconda is not in your system PATH. Use the "Anaconda Prompt" instead, or add Miniconda to your PATH (re-open terminal after).
-* **Ollama Connection Errors (e.g., `ConnectionRefusedError`):**
-    * Ensure the Ollama application is running. Check your system tray or task manager.
-    * Verify the `API_ENDPOINT` in the script matches where Ollama is listening (default is usually correct).
-    * Check if a firewall is blocking the connection to `localhost:11434`.
-* **Model Not Found by Ollama:**
-    * Ensure you've pulled the model using `ollama pull <model_name>`.
-    * Double-check the model name spelling in the script or command-line argument.
-* **Slow Translations / Timeouts:**
-    * Larger models are slower.
-    * Your hardware (CPU/GPU, RAM) impacts speed.
-    * Increase `REQUEST_TIMEOUT` in the script if API calls are consistently timing out.
-    * Consider reducing `MAIN_LINES_PER_CHUNK` to send smaller pieces of text, which might process faster individually but result in more API calls.
-* **Poor Translation Quality:**
-    * Experiment with different models. Some models are better for specific language pairs or styles. The script mentions `mistral-small:24b` is "best for french language" – this is subjective and model performance changes.
-    * The prompt engineering within `generate_translation_request` function in `translate.py` is crucial. You might need to tweak the instructions for the LLM if results are not satisfactory.
-    * Ensure `OLLAMA_NUM_CTX` is appropriate for the model. Too small can truncate context.
-* **`Error translating/extracting chunk... Marking as ERROR in output.`:**
-    * This means the LLM failed to provide a valid response or the script couldn't parse it (e.g., missing `<translate>` tags) after `MAX_TRANSLATION_ATTEMPTS`.
-    * Check Ollama's logs for more detailed errors (often accessible via the Ollama system tray icon or command line).
-    * The model might be overloaded, or the input for that chunk could be problematic.
-    * Try increasing `REQUEST_TIMEOUT` or `MAX_TRANSLATION_ATTEMPTS`.
-* **Output File Issues:** Ensure you have write permissions in the directory specified for the output file.
-* **To stop a running script:** Press `Ctrl+C` in the Anaconda Prompt.
-* **Updating the script (if cloned from Git):** If the script in the `TranslateBookWithLLM` repository is updated, you can get the latest version by navigating to the `C:\Projects\TranslateBookWithLLM` directory in your Anaconda Prompt (or Git Bash) and running:
-    ```bash
-    git pull
-    ```
-
 ---
-
 
 ### Modifying the LLM Prompt
 
