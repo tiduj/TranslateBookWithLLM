@@ -213,7 +213,7 @@ Modify `translate.py` directly for deeper customization.
     + Vary your vocabulary with synonyms, avoid words repetition.
     + Maintain the original layout of the text, but remove typos, extraneous characters and line-break hyphens.
 
-    ## [OUTPUT] 
+    ## [FORMATING INSTRUCTIONS] 
     + Translate ONLY the text enclosed within the tags "[START OF MAIN PART TO TRANSLATE ({source_lang})]" and "[END OF MAIN PART TO TRANSLATE ({source_lang})]" from {source_lang} into {target_language}.
     + Refer to the "[START OF PREVIOUS TRANSLATION BLOCK ({target_language})]" section (if provided) to ensure consistency with the previous paragraph.
     + Surround your translation with <translate> and </translate> tags. For example: <translate>Your text translated here.</translate>
