@@ -128,26 +128,26 @@ async def generate_translation_request(main_content, context_before, context_aft
 {previous_translation_context}
 [END OF PREVIOUS TRANSLATION BLOCK ({target_language})]
 """
-    # Prompt engineering: This is where you define how the LLM should behave.
-    # You might want to adjust the instructions or the tags if you change the model or desired output style.
+# Prompt engineering: This is where you define how the LLM should behave.
+# You might want to adjust the instructions or the tags if you change the model or desired output style.
     structured_prompt = f"""{previous_translation_block_text}
 [START OF MAIN PART TO TRANSLATE ({source_lang_upper})]
 {main_content}
 [END OF MAIN PART TO TRANSLATE ({source_lang_upper})]
-[ROLE] You are a professional translator, and your native language is {target_language}.
-[INSTRUCTIONS] Your task is to translate in the author's style.
-Precisely preserve the deeper meaning of the text, without necessarily adhering strictly to the original wording, to enhance style and fluidity.
-For technical terms, you may retain the English words if they are commonly used in {target_language}.
-It is critically important to adapt expressions and vocabulary to the {target_language} language.
-Maintain the original layout of the text.
-If the original text contains typos or extraneous elements, you may remove them.
 
+[ROLE] 
+You are a professional translator, and your native language is {target_language}.
+
+[INSTRUCTIONS] 
+Your task is to translate in the author's style.
+Precisely preserve the deeper meaning of the text, without necessarily adhering strictly to the original wording, to enhance style and fluidity.
+It is critically important to adapt expressions, culture and vocabulary to the {target_language} language.
+Maintain the original layout of the text, but remove typos, extraneous characters, line-break hyphens, superfluous whitespace, and any redundant or irrelevant content.
 Translate ONLY the text enclosed within the tags "[START OF MAIN PART TO TRANSLATE ({source_lang_upper})]" and "[END OF MAIN PART TO TRANSLATE ({source_lang_upper})]" from {source_lang_upper} into {target_language}.
-Refer to the "[START OF PREVIOUS TRANSLATION BLOCK ({target_language})]" section (if provided) to ensure stylistic and terminological consistency with previously translated text. 
+Refer to the "[START OF PREVIOUS TRANSLATION BLOCK ({target_language})]" section (if provided) to ensure consistency with the previously translated text.
 Surround your translation with <translate> and </translate> tags. 
 For example: <translate>Your text translated here.</translate>
 Return only the translation of the main part, formatted as requested. 
-The translation must be framed by <translate> and </translate> tags. 
 DO NOT WRITE ANYTHING BEFORE OR AFTER.
 """
     payload = {
