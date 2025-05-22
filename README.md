@@ -1,4 +1,4 @@
-# TranslateBookWithLLM
+# Translate Book With LLM
 
 A Python script designed for large-scale text translation, such as entire books, leveraging a local LLM via the Ollama API.
 
