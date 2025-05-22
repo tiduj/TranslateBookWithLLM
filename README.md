@@ -243,56 +243,6 @@ If you modify these directly in `translate.py`, remember to save the file.
 ---
 
 
-# TranslateBookWithLLM: `translate.py` Script Guide
-
-This guide provides instructions on how to run and effectively utilize the `translate.py` script for translating text files using a local Ollama-served Large Language Model (LLM).
-
-**Note:** This document assumes you have already followed the "Comprehensive Guide: Running the Python Translation Script (translate.py) on Windows with Miniconda and Ollama" and have successfully set up Miniconda, Ollama, cloned this repository, and installed the necessary dependencies within the `translate_book_env` Conda environment.
-
-## Table of Contents
-
-1.  [Prerequisites](#prerequisites)
-2.  [Activating the Environment](#activating-the-environment)
-3.  [Running the Translation Script](#running-the-translation-script)
-    * [Basic Command Structure](#basic-command-structure)
-    * [Command-Line Arguments](#command-line-arguments)
-    * [Examples](#examples)
-4.  [Understanding and Customizing Script Internals](#understanding-and-customizing-script-internals)
-    * [Key Configuration Constants](#key-configuration-constants)
-    * [Modifying the LLM Prompt](#modifying-the-llm-prompt)
-    * [Output Parsing](#output-parsing)
-5.  [Tips for Better Translations](#tips-for-better-translations)
-6.  [Troubleshooting Script Execution](#troubleshooting-script-execution)
-
-## 1. Prerequisites
-
-Before running the script, ensure the following are in place:
-
-* **Miniconda:** Installed and configured.
-* **`translate_book_env`:** Conda environment created and activated as per the installation guide.
-* **Python Dependencies:** `requests` and `tqdm` installed within `translate_book_env`.
-* **Ollama:** Installed, running, and accessible (typically at `http://localhost:11434`).
-* **LLM Model:** The desired LLM (e.g., `mistral-small:24b` or your chosen model) has been pulled using `ollama pull <model_name>`.
-* **Input File:** You have a plain text file (`.txt`) ready for translation.
-
-## 2. Activating the Environment
-
-Every time you want to run the script, you must first activate the correct Conda environment. Open your Anaconda Prompt (or Miniconda Prompt) and run:
-
-```bash
-conda activate translate_book_env
-```
-Your command prompt should now be prefixed with `(translate_book_env)`.
-
-Next, navigate to the directory where the `translate.py` script is located (e.g., the root of your `TranslateBookWithLLM` cloned repository):
-
-```bash
-cd path\to\your\TranslateBookWithLLM
-```
-
-## 3. Running the Translation Script
-
-Once the environment is active and you are in the correct directory, you can execute the script.
 
 ### Basic Command Structure
 
