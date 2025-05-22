@@ -94,9 +94,9 @@ Choose one of the following methods:
         mkdir C:\Projects
         cd C:\Projects
         ```
-    * Clone the repository (replace `YourUsername/TranslateBookWithLLM.git` with the actual repository URL):
+    * Clone the repository (replace `hydropix/TranslateBookWithLLM.git` with the actual repository URL):
         ```bash
-        git clone https://github.com/YourUsername/TranslateBookWithLLM.git
+        git clone https://github.com/hydropix/TranslateBookWithLLM.git
         ```
     * Navigate into the cloned directory:
         ```bash
