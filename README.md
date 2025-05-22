@@ -153,7 +153,7 @@ This guide will assume the script is in `C:\Projects\TranslateBookWithLLM`.
     * `-sl` or `--source_lang`: Source language (default: "English").
     * `-tl` or `--target_lang`: Target language (default: "French").
     * `-m` or `--model`: LLM model to use (default set in script, e.g., `mistral-small:24b`). Must be pulled via Ollama.
-    * `-cs` or `--chunksize`: Target number of lines per translation chunk (default: `200`).
+    * `-cs` or `--chunksize`: Target number of lines per translation chunk (default: `25`).
 
 4.  **Execution Command & Examples:**
     * **Basic command structure:**
@@ -171,7 +171,7 @@ This guide will assume the script is in `C:\Projects\TranslateBookWithLLM`.
         *(Ensure `qwen2:7b` is pulled: `ollama pull qwen2:7b`)*
     * **Example 3: Translate `input.txt` with a smaller chunk size:**
         ```bash
-        python translate.py -i input.txt -o output_fr.txt -cs 100
+        python translate.py -i input.txt -o output_fr.txt -cs 10
         ```
     The script will display a progress bar as it processes chunks.
 
@@ -182,7 +182,7 @@ Modify `translate.py` directly for deeper customization.
 1.  **Key Script Configurations (Inside `translate.py`):**
     * `API_ENDPOINT = "http://localhost:11434/api/generate"`: Ollama API endpoint.
     * `DEFAULT_MODEL = "mistral-small:24b"`: Default model if not specified via CLI.
-    * `MAIN_LINES_PER_CHUNK = 200`: Default chunk size if not specified via CLI.
+    * `MAIN_LINES_PER_CHUNK = 25`: Default chunk size if not specified via CLI.
     * `REQUEST_TIMEOUT = 60`: Timeout in seconds for API requests. **Increase this (e.g., to `120` or `300`) if your model is slow or chunks are large, causing timeouts.**
     * `OLLAMA_NUM_CTX = 4096`: Context window size for Ollama (model-dependent).
     * `MAX_TRANSLATION_ATTEMPTS = 3`: Retries for a failing chunk.
