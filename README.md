@@ -1,2 +1,2 @@
 # TranslateBookWithLLM
-Need to translate a whole book? This Python script is built for that. It uses a powerful Large Language Model (LLM) and the Ollama API to efficiently handle large-volume text translation.
+A Python script designed for large-scale text translation, such as entire books, leveraging an LLM and the Ollama API.
