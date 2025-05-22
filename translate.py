@@ -10,7 +10,7 @@ import argparse
 # User settings: Modify these values to change the script's default behavior.
 API_ENDPOINT = "http://localhost:11434/api/generate"  # Ollama API endpoint
 DEFAULT_MODEL = "mistral-small:24b"  # Default LLM model to use for translation, best for french language
-MAIN_LINES_PER_CHUNK = 200  # Target number of main lines per translation chunk
+MAIN_LINES_PER_CHUNK = 25  # Target number of main lines per translation chunk
 REQUEST_TIMEOUT = 180  # Timeout in seconds for API requests (adjust if your model is slow or text is very long)
 OLLAMA_NUM_CTX = 4096  # Context window size for Ollama (model-dependent)
 SENTENCE_TERMINATORS = tuple(list(".!?") + ['."', '?"', '!"', '.”', ".'", "?'", "!'", ":", ".)"]) # Characters indicating end of a sentence for chunking logic
