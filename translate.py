@@ -119,37 +119,39 @@ def split_text_into_chunks_with_context(text, main_lines_per_chunk_target):
 async def generate_translation_request(main_content, context_before, context_after, previous_translation_context,
                                      source_language="English", target_language="French", model=DEFAULT_MODEL):
     full_raw_response = ""
-    source_lang_upper = source_language.upper() # For the tags
+    source_lang = source_language.upper() # For the tags
 
     previous_translation_block_text = ""
     if previous_translation_context and previous_translation_context.strip():
         previous_translation_block_text = f"""
-[START OF PREVIOUS TRANSLATION BLOCK ({target_language})]
-{previous_translation_context}
-[END OF PREVIOUS TRANSLATION BLOCK ({target_language})]
-"""
-# Prompt engineering: This is where you define how the LLM should behave.
-# You might want to adjust the instructions or the tags if you change the model or desired output style.
+
+    [START OF PREVIOUS TRANSLATION BLOCK ({target_language})]
+    {previous_translation_context}
+    [END OF PREVIOUS TRANSLATION BLOCK ({target_language})]
+    """
     structured_prompt = f"""{previous_translation_block_text}
-[START OF MAIN PART TO TRANSLATE ({source_lang_upper})]
-{main_content}
-[END OF MAIN PART TO TRANSLATE ({source_lang_upper})]
+    [START OF MAIN PART TO TRANSLATE ({source_lang})]
+    {main_content}
+    [END OF MAIN PART TO TRANSLATE ({source_lang})]
 
-[ROLE] 
-You are a professional translator, and your native language is {target_language}.
+    ## [ROLE] 
+    # You are a {target_language} professional translator.
 
-[INSTRUCTIONS] 
-Your task is to translate in the author's style.
-Precisely preserve the deeper meaning of the text, without necessarily adhering strictly to the original wording, to enhance style and fluidity.
-It is critically important to adapt expressions, culture and vocabulary to the {target_language} language.
-Maintain the original layout of the text, but remove typos, extraneous characters, line-break hyphens, superfluous whitespace, and any redundant or irrelevant content.
-Translate ONLY the text enclosed within the tags "[START OF MAIN PART TO TRANSLATE ({source_lang_upper})]" and "[END OF MAIN PART TO TRANSLATE ({source_lang_upper})]" from {source_lang_upper} into {target_language}.
-Refer to the "[START OF PREVIOUS TRANSLATION BLOCK ({target_language})]" section (if provided) to ensure consistency with the previous paragraph.
-Surround your translation with <translate> and </translate> tags. 
-For example: <translate>Your text translated here.</translate>
-Return only the translation of the main part, formatted as requested. 
-DO NOT WRITE ANYTHING BEFORE OR AFTER.
-"""
+    ## [TRANSLATION INSTRUCTIONS] 
+    + Translate in the author's style.
+    + Precisely preserve the deeper meaning of the text, without necessarily adhering strictly to the original wording, to enhance style and fluidity.
+    + Adapt expressions and culture to the {target_language} language.
+    + Vary your vocabulary with synonyms, avoid words repetition.
+    + Maintain the original layout of the text, but remove typos, extraneous characters and line-break hyphens.
+
+    ## [OUTPUT] 
+    + Translate ONLY the text enclosed within the tags "[START OF MAIN PART TO TRANSLATE ({source_lang})]" and "[END OF MAIN PART TO TRANSLATE ({source_lang})]" from {source_lang} into {target_language}.
+    + Refer to the "[START OF PREVIOUS TRANSLATION BLOCK ({target_language})]" section (if provided) to ensure consistency with the previous paragraph.
+    + Surround your translation with <translate> and </translate> tags. For example: <translate>Your text translated here.</translate>
+    + Return only the translation of the main part, formatted as requested.
+
+    DO NOT WRITE ANYTHING BEFORE OR AFTER.
+    """
     payload = {
         "model": model,
         "prompt": structured_prompt,
