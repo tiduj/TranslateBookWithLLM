@@ -275,7 +275,7 @@ if __name__ == "__main__":
     # Command-line arguments: These allow overriding default settings for a specific run.
     parser = argparse.ArgumentParser(description="Translate a text file using an LLM.")
     parser.add_argument("-i", "--input", required=True, help="Path to the input text file to translate.")
-    parser.add_argument("-o", "--output", required=True, help="Path to the output file for the translation.")
+    parser.add_argument("-o", "--output", default="output.txt", help="Path to the output file for the translation (default: output.txt).")
     parser.add_argument("-sl", "--source_lang", default="English", help="Source language of the text (default: English).") # User setting: Source language
     parser.add_argument("-tl", "--target_lang", default="French", help="Target language for translation (default: French).") # User setting: Target language
     parser.add_argument("-m", "--model", default=DEFAULT_MODEL, help=f"LLM model to use (default: {DEFAULT_MODEL}).") # User setting: Model override
