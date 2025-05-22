@@ -10,30 +10,30 @@ This guide walks you through setting up the necessary tools, configuring your en
 
 **Table of Contents:**
 
-1.  **Prerequisites: Software Installation**
+1.  **[Prerequisites: Software Installation](#1-prerequisites-software-installation)**
     * Miniconda (Python Environment Manager)
     * Ollama (Local LLM Runner)
     * Git (Version Control - Recommended)
     * Code Editor (e.g., VS Code - Optional)
-2.  **Setting up the Python Environment**
+2.  **[Setting up the Python Environment](#2-setting-up-the-python-environment)**
     * Create and Activate Conda Environment (`translate_book_env`)
-3.  **Getting the Translation Script (`translate.py`)**
+3.  **[Getting the Translation Script (translate.py)](#3-getting-the-translation-script-translatepy)**
     * Cloning from GitHub (Recommended)
     * Manual Download
-4.  **Installing Python Dependencies**
-5.  **Preparing and Running Ollama**
+4.  **[Installing Python Dependencies](#4-installing-python-dependencies)**
+5.  **[Preparing and Running Ollama](#5-preparing-and-running-ollama)**
     * Pulling an LLM Model
     * Ensuring Ollama Service is Running
-6.  **Running the Translation Script**
+6.  **[Running the Translation Script](#6-running-the-translation-script)**
     * Prepare Your Input File
     * Script Arguments
     * Execution Command & Examples
-7.  **Advanced Configuration & Customization**
+7.  **[Advanced Configuration & Customization](#7-advanced-configuration--customization)**
     * Key Script Configurations (Inside `translate.py`)
     * Modifying the LLM Prompt
     * Output Parsing
-8.  **Tips for Better Translations**
-9.  **Troubleshooting**
+8.  **[Tips for Better Translations](#8-tips-for-better-translations)**
+9.  **[Troubleshooting](#9-troubleshooting)**
 
 ---
 
@@ -96,7 +96,7 @@ Choose one of the following methods:
         ```
     * Clone the repository:
         ```bash
-        git clone https://github.com/hydropix/TranslateBookWithLLM.git
+        git clone [https://github.com/hydropix/TranslateBookWithLLM.git](https://github.com/hydropix/TranslateBookWithLLM.git)
         ```
     * Navigate into the cloned directory:
         ```bash
@@ -263,5 +263,3 @@ Modify `translate.py` directly for deeper customization.
     * Adjust `chunksize`.
 * **Script Fails to Extract Translation:** Ensure the LLM's output format (especially the `<translate>` tags) matches what the script expects (see section 7.3). Check Ollama logs or print the `full_raw_response` in the script for debugging.
 * **Permission Denied (Writing Output File):** Ensure you have write permissions in the output directory.
-
----
