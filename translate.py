@@ -143,8 +143,12 @@ Maintain the original layout of the text.
 If the original text contains typos or extraneous elements, you may remove them.
 
 Translate ONLY the text enclosed within the tags "[START OF MAIN PART TO TRANSLATE ({source_lang_upper})]" and "[END OF MAIN PART TO TRANSLATE ({source_lang_upper})]" from {source_language} into {target_language}.
-Refer to the "[START OF PREVIOUS TRANSLATION BLOCK ({target_language})]" section (if provided) to ensure stylistic and terminological consistency with previously translated text. Include the original novel's formatting. Surround your translation with <translate> and </translate> tags. For example: <translate>Your text translated here.</translate>
-Return only the translation of the main part, formatted as requested. The translation must be framed by <translate> and </translate> tags. DO NOT WRITE ANYTHING BEFORE OR AFTER.
+Refer to the "[START OF PREVIOUS TRANSLATION BLOCK ({target_language})]" section (if provided) to ensure stylistic and terminological consistency with previously translated text. 
+Surround your translation with <translate> and </translate> tags. 
+For example: <translate>Your text translated here.</translate>
+Return only the translation of the main part, formatted as requested. 
+The translation must be framed by <translate> and </translate> tags. 
+DO NOT WRITE ANYTHING BEFORE OR AFTER.
 """
     payload = {
         "model": model,
