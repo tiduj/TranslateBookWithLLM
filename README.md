@@ -82,12 +82,6 @@ Before you begin, install the following software:
         conda activate translate_book_env
         ```
     * Your prompt should now start with `(translate_book_env)`.
-    * Install dependencies :
-       ```bash
-       pip install requests tqdm
-       ```
-
-
     * **Note:** Always activate this environment in any new Anaconda Prompt session before using the script.
 
 ### 3. Getting the Translation Script (`translate.py`)
@@ -100,7 +94,7 @@ Choose one of the following methods:
         mkdir C:\Projects
         cd C:\Projects
         ```
-    * Clone the repository :
+    * Clone the repository:
         ```bash
         git clone https://github.com/hydropix/TranslateBookWithLLM.git
         ```
