@@ -142,7 +142,7 @@ It is critically important to adapt expressions and vocabulary to the {target_la
 Maintain the original layout of the text.
 If the original text contains typos or extraneous elements, you may remove them.
 
-Translate ONLY the text enclosed within the tags "[START OF MAIN PART TO TRANSLATE ({source_lang_upper})]" and "[END OF MAIN PART TO TRANSLATE ({source_lang_upper})]" from {source_language} into {target_language}.
+Translate ONLY the text enclosed within the tags "[START OF MAIN PART TO TRANSLATE ({source_lang_upper})]" and "[END OF MAIN PART TO TRANSLATE ({source_lang_upper})]" from {source_lang_upper} into {target_language}.
 Refer to the "[START OF PREVIOUS TRANSLATION BLOCK ({target_language})]" section (if provided) to ensure stylistic and terminological consistency with previously translated text. 
 Surround your translation with <translate> and </translate> tags. 
 For example: <translate>Your text translated here.</translate>
