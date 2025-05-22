@@ -144,7 +144,7 @@ Precisely preserve the deeper meaning of the text, without necessarily adhering 
 It is critically important to adapt expressions, culture and vocabulary to the {target_language} language.
 Maintain the original layout of the text, but remove typos, extraneous characters, line-break hyphens, superfluous whitespace, and any redundant or irrelevant content.
 Translate ONLY the text enclosed within the tags "[START OF MAIN PART TO TRANSLATE ({source_lang_upper})]" and "[END OF MAIN PART TO TRANSLATE ({source_lang_upper})]" from {source_lang_upper} into {target_language}.
-Refer to the "[START OF PREVIOUS TRANSLATION BLOCK ({target_language})]" section (if provided) to ensure consistency with the previously translated text.
+Refer to the "[START OF PREVIOUS TRANSLATION BLOCK ({target_language})]" section (if provided) to ensure consistency with the previous paragraph.
 Surround your translation with <translate> and </translate> tags. 
 For example: <translate>Your text translated here.</translate>
 Return only the translation of the main part, formatted as requested. 
