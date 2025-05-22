@@ -82,6 +82,12 @@ Before you begin, install the following software:
         conda activate translate_book_env
         ```
     * Your prompt should now start with `(translate_book_env)`.
+    * Install dependencies :
+       ```bash
+       pip install requests tqdm
+       ```
+
+
     * **Note:** Always activate this environment in any new Anaconda Prompt session before using the script.
 
 ### 3. Getting the Translation Script (`translate.py`)
