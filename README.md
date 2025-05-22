@@ -320,30 +320,4 @@ If you modify the prompt to use different tags (or no tags), you **must** update
 * **Context Window (`OLLAMA_NUM_CTX`):** Ensure this is set appropriately for your chosen model. A larger context window allows the model to "see" more of the surrounding text (if your chunking/context logic provides it), which can improve coherence. However, it also increases memory requirements.
 * **Iterative Refinement:** If a particular section is poorly translated, you might isolate it, adjust the prompt specifically for that type of content, and re-translate only that part.
 
-## 6. Troubleshooting Script Execution
-
-Refer to section "H. Troubleshooting and Tips" in the comprehensive installation guide for general issues (Ollama connection, Python errors, etc.). Specific issues related to `translate.py` execution include:
-
-* **`Error translating/extracting chunk...`:**
-    * The LLM failed to respond correctly, or the `<translate>` tags were missing.
-    * Check Ollama logs for errors from the model itself.
-    * **Increase `REQUEST_TIMEOUT`** in the script if this happens frequently, especially with large chunks or slow models.
-    * Try reducing `MAIN_LINES_PER_CHUNK` or the `-cs` argument.
-    * Review your prompt to ensure it reliably instructs the model to use the tags.
-    * The model might be overloaded or outputting malformed responses.
-    * Try a different model.
-* **Slow Translations:**
-    * Your hardware (CPU/GPU, RAM) is a major factor.
-    * Larger models are generally slower.
-    * Large `MAIN_LINES_PER_CHUNK` or `-cs` values mean more processing per API call.
-    * Check if `OLLAMA_NUM_CTX` is excessively large for your system's capabilities with the chosen model.
-* **Poor Translation Quality:**
-    * This is often down to the model choice and prompt engineering. Experiment!
-    * Ensure `source_lang` and `target_lang` are correctly specified.
-* **Empty Output File or Missing Chunks:**
-    * Check for error messages during the script execution.
-    * The input file might be empty or structured in a way the chunking logic struggles with.
-    * If all chunks fail translation/extraction, the output file might be empty or only contain error placeholders.
-
-By understanding these options and configurations, you can effectively tailor the `translate.py` script to your specific translation needs.
 ```
