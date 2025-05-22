@@ -1,7 +1,7 @@
 # TranslateBookWithLLM
 A Python script designed for large-scale text translation, such as entire books, leveraging an LLM and the Ollama API.
 
-## Comprehensive Guide: Running the Python Translation Script (`translate.py`) on Windows with Miniconda and Ollama (Using `translate_book_env`)
+## Windows Installation
 
 This guide will walk you through setting up the necessary tools, configuring your environment, and executing the Python translation script.
 
