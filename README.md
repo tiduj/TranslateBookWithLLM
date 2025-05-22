@@ -194,24 +194,32 @@ Modify `translate.py` directly for deeper customization.
     ```python
     # Inside generate_translation_request function in translate.py:
     # ...
-    # previous_translation_block_text = f"""...""" # Provides context
+    [START OF PREVIOUS TRANSLATION BLOCK ({target_language})]
+    {previous_translation_context}
+    [END OF PREVIOUS TRANSLATION BLOCK ({target_language})]
+    """
+    structured_prompt = f"""{previous_translation_block_text}
+    [START OF MAIN PART TO TRANSLATE ({source_lang})]
+    {main_content}
+    [END OF MAIN PART TO TRANSLATE ({source_lang})]
 
-    # structured_prompt = f"""{previous_translation_block_text}
-    # [START OF MAIN PART TO TRANSLATE ({source_lang_upper})]
-    # {main_content}
-    # [END OF MAIN PART TO TRANSLATE ({source_lang_upper})]
-    # [ROLE] You are a professional translator, and your native language is {target_language}.
-    # [INSTRUCTIONS] Your task is to translate in the author's style.
-    # Precisely preserve the deeper meaning of the text, without necessarily adhering strictly to the original wording, to enhance style and fluidity.
-    # For technical terms, you may retain the English words if they are commonly used in {target_language}.
-    # It is critically important to adapt expressions and vocabulary to the {target_language} language.
-    # Maintain the original layout of the text.
-    # If the original text contains typos or extraneous elements, you may remove them.
+    ## [ROLE] 
+    # You are a {target_language} professional translator.
 
-    # Translate ONLY the text enclosed within the tags "[START OF MAIN PART TO TRANSLATE ({source_lang_upper})]" and "[END OF MAIN PART TO TRANSLATE ({source_lang_upper})]" from {source_language} into {target_language}.
-    # Refer to the "[START OF PREVIOUS TRANSLATION BLOCK ({target_language})]""" section (if provided) to ensure stylistic and terminological consistency with previously translated text. Include the original novel's formatting. Surround your translation with <translate> and </translate> tags. For example: <translate>Your text translated here.</translate>
-    # Return only the translation of the main part, formatted as requested. The translation must be framed by <translate> and </translate> tags. DO NOT WRITE ANYTHING BEFORE OR AFTER.
-    # """
+    ## [TRANSLATION INSTRUCTIONS] 
+    + Translate in the author's style.
+    + Precisely preserve the deeper meaning of the text, without necessarily adhering strictly to the original wording, to enhance style and fluidity.
+    + Adapt expressions and culture to the {target_language} language.
+    + Vary your vocabulary with synonyms, avoid words repetition.
+    + Maintain the original layout of the text, but remove typos, extraneous characters and line-break hyphens.
+
+    ## [OUTPUT] 
+    + Translate ONLY the text enclosed within the tags "[START OF MAIN PART TO TRANSLATE ({source_lang})]" and "[END OF MAIN PART TO TRANSLATE ({source_lang})]" from {source_lang} into {target_language}.
+    + Refer to the "[START OF PREVIOUS TRANSLATION BLOCK ({target_language})]" section (if provided) to ensure consistency with the previous paragraph.
+    + Surround your translation with <translate> and </translate> tags. For example: <translate>Your text translated here.</translate>
+    + Return only the translation of the main part, formatted as requested.
+
+    DO NOT WRITE ANYTHING BEFORE OR AFTER.
     # ...
     ```
 
