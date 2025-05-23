@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Translating Books With LLMs</title>
     <style>
+        /* ... (Styles CSS inchangés) ... */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -48,6 +49,11 @@
         .error { background: #fee; border: 1px solid #fcc; color: #c00; }
         .success { background: #efe; border: 1px solid #cfc; color: #060; }
         .info { background: #e6f3ff; border: 1px solid #b3d9ff; color: #0066cc; }
+        #fileListContainer { margin-top: 10px; max-height: 150px; overflow-y: auto; background: #f9fafb; padding: 10px; border-radius: 8px; border: 1px solid #e5e7eb; }
+        #fileListContainer li { list-style-type: none; padding: 5px; border-bottom: 1px solid #eee; }
+        #fileListContainer li:last-child { border-bottom: none; }
+        .file-status { font-style: italic; color: #555; font-size: 0.9em; margin-left: 10px; }
+
     </style>
 </head>
 <body>
@@ -79,18 +85,20 @@
                         </div>
                     </div>
 
-<div class="form-group">
+                    <div class="form-group">
                         <label>Source Language</label>
                         <select class="form-control" id="sourceLang" onchange="checkCustomSourceLanguage(this)">
                             <option value="English">English</option>
                             <option value="Chinese">Chinese</option>
-                            <option value="Hindi">Hindi</option>
                             <option value="Spanish">Spanish</option>
                             <option value="French">French</option>
+                            <option value="German">German</option>
+                            <option value="Italian">Italian</option>
+                            <option value="Portuguese">Portuguese</option>
+                            <option value="Hindi">Hindi</option>
                             <option value="Arabic">Arabic</option>
                             <option value="Bengali">Bengali</option>
                             <option value="Russian">Russian</option>
-                            <option value="Portuguese">Portuguese</option>
                             <option value="Urdu">Urdu</option>
                             <option value="Other">Other (Specify)</option>
                         </select>
@@ -103,20 +111,23 @@
                             <option value="French">French</option>
                             <option value="English">English</option>
                             <option value="Chinese">Chinese</option>
-                            <option value="Hindi">Hindi</option>
                             <option value="Spanish">Spanish</option>
+                            <option value="German">German</option>
+                            <option value="Italian">Italian</option>
+                            <option value="Portuguese">Portuguese</option>
+                            <option value="Hindi">Hindi</option>
                             <option value="Arabic">Arabic</option>
                             <option value="Bengali">Bengali</option>
                             <option value="Russian">Russian</option>
-                            <option value="Portuguese">Portuguese</option>
                             <option value="Urdu">Urdu</option>
                             <option value="Other">Other (Specify)</option>
                         </select>
                         <input type="text" class="form-control" id="customTargetLang" placeholder="Enter custom target language (e.g., Portuguese)" style="margin-top: 10px; display: none;">
                     </div>
                      <div class="form-group">
-                        <label>Output Filename</label>
-                        <input type="text" class="form-control" id="outputFilename" value="translated_output.txt">
+                        <label>Output Filename Pattern</label>
+                        <input type="text" class="form-control" id="outputFilenamePattern" value="translated_{originalName}.txt" title="Use {originalName} as placeholder for original filename without extension.">
+                        <small>Example: `translated_{originalName}_to_FR.txt`</small>
                     </div>
                 </div>
 
@@ -151,29 +162,27 @@
                 </div>
 
                 <div class="file-upload" id="fileUpload" onclick="document.getElementById('fileInput').click()">
-                    <h3>📁 Drag & Drop your .txt file here</h3>
+                    <h3>📁 Drag & Drop your .txt files here</h3>
                     <p>or click to select</p>
-                    <input type="file" id="fileInput" accept=".txt" style="display: none;" onchange="handleFileSelect(event)">
+                    <input type="file" id="fileInput" accept=".txt" style="display: none;" onchange="handleFileSelect(event)" multiple> </div>
+
+                <div id="fileInfo" class="hidden" style="margin-bottom: 20px;">
+                    <h4>Selected Files:</h4>
+                    <ul id="fileListContainer"></ul> <button class="btn" onclick="resetFiles()" style="background: #e5e7eb; color: #374151; margin-top:10px;">❌ Clear All Files</button>
                 </div>
 
-                <div id="fileInfo" class="hidden" style="margin-bottom: 20px; padding: 15px; background: #f3f4f6; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
-                    <span id="fileNameDisplay"></span>
-                    <button class="btn" onclick="resetFile()" style="background: #e5e7eb; color: #374151;">❌ Clear</button>
-                </div>
 
                 <div id="messages"></div>
 
                 <div style="text-align: center; margin-top: 30px; display: flex; justify-content: center; gap: 15px;">
-                    <button class="btn btn-primary" id="translateBtn" onclick="startTranslation()" disabled>
-                        ▶️ Start Translation
+                    <button class="btn btn-primary" id="translateBtn" onclick="startBatchTranslation()" disabled> ▶️ Start Translation Batch
                     </button>
-                    <button class="btn btn-danger hidden" id="interruptBtn" onclick="interruptTranslation()">
-                        ⏹️ Interrupt
+                    <button class="btn btn-danger hidden" id="interruptBtn" onclick="interruptCurrentTranslation()"> ⏹️ Interrupt Current & Stop Batch
                     </button>
                 </div>
 
                 <div id="progressSection" class="progress-section hidden">
-                    <h3>📊 Translation Progress</h3>
+                    <h3 id="currentFileProgressTitle">📊 Translation Progress</h3>
                     <div class="progress-bar-container">
                         <div class="progress-bar" id="progressBar" style="width: 0%">0%</div>
                     </div>
@@ -183,15 +192,14 @@
                         <div class="stat-card"><h3 id="failedChunks">0</h3><p>Failed</p></div>
                         <div class="stat-card"><h3 id="elapsedTime">0s</h3><p>Time Elapsed</p></div>
                     </div>
-                    <h4>💻 Activity Log</h4>
+                    <h4>💻 Activity Log (Current File)</h4>
                     <div class="log-container" id="logContainer"></div>
                 </div>
 
                 <div id="outputSection" class="output-section hidden">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <h3>📄 Translation Result</h3>
-                        <button class="btn btn-primary" id="downloadBtn" onclick="downloadTranslation()" disabled>
-                            ⬇️ Download File
+                        <h3 id="outputTitle">📄 Translation Result</h3>
+                        <button class="btn btn-primary" id="downloadBtn" onclick="downloadLastTranslation()" disabled> ⬇️ Download Last File
                         </button>
                     </div>
                     <div class="output-preview" id="outputPreview"></div>
@@ -205,14 +213,14 @@
 
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script>
-        let fileContent = '';
-        let originalFileName = '';
-        let translatedContentFromServer = '';
-        let isTranslating = false;
-        let currentTranslationId = null;
-        
+        // MODIFIED: Variables to handle multiple files and batch processing
+        let filesToProcess = []; // Array of file objects {name, content, status, outputFilename, translationId, result}
+        let translationQueue = [];
+        let currentProcessingJob = null; // { fileRef, translationId }
+        let isBatchActive = false;
+        let lastCompletedJobData = null; // To store data for the download button
+
         const API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:5000`;
-        
         const socket = io(API_BASE_URL);
         
         socket.on('connect', () => { 
@@ -222,41 +230,75 @@
         socket.on('disconnect', () => { 
             console.log('WebSocket disconnected.'); 
             addLog('❌ WebSocket connection lost.'); 
+            if (isBatchActive && currentProcessingJob) {
+                showMessage('Connection lost. Batch paused. Reconnect to resume or reset.', 'error');
+            }
         });
         
         socket.on('translation_update', (data) => {
-            if (data.translation_id === currentTranslationId) {
+            if (currentProcessingJob && data.translation_id === currentProcessingJob.translationId) {
                 handleTranslationUpdate(data);
+            } else {
+                // Log for other updates if necessary, or ignore if not relevant to current UI focus
+                console.log("Received update for a different/old job:", data.translation_id);
             }
         });
 
-        function finishTranslationUI(statusMessage, messageType, resultData) {
+        function updateFileStatusInList(fileName, newStatus, translationId = null) {
+            const fileListItem = document.querySelector(`#fileListContainer li[data-filename="${fileName}"] .file-status`);
+            if (fileListItem) {
+                fileListItem.textContent = `(${newStatus})`;
+            }
+            const fileObj = filesToProcess.find(f => f.name === fileName);
+            if (fileObj) {
+                fileObj.status = newStatus;
+                if (translationId) fileObj.translationId = translationId;
+            }
+        }
+        
+        function finishCurrentFileTranslationUI(statusMessage, messageType, resultData) {
+            if (!currentProcessingJob) return;
+
+            const currentFile = currentProcessingJob.fileRef;
+            currentFile.status = resultData.status || 'unknown_error'; // Update status in main list
+            currentFile.result = resultData.result; // Store result with file object
+
             if (resultData && resultData.result) {
-                translatedContentFromServer = resultData.result;
+                translatedContentFromServer = resultData.result; // Used by existing preview logic
                 document.getElementById('outputPreview').textContent = 
                     (translatedContentFromServer || "").substring(0, 1000) + 
                     ((translatedContentFromServer || "").length > 1000 ? '...' : '');
                 document.getElementById('outputSection').classList.remove('hidden');
-                // Enable download if output_filename is present and status is not a hard error for saving.
-                document.getElementById('downloadBtn').disabled = !(resultData.output_filename && (resultData.status === 'completed' || resultData.status === 'interrupted'));
+                document.getElementById('outputTitle').textContent = `📄 Translation Result for ${currentFile.name}`;
+                
+                lastCompletedJobData = { // Store for potential download
+                    translationId: currentProcessingJob.translationId,
+                    outputFilename: currentFile.outputFilename, // Use the determined output filename
+                    status: resultData.status
+                };
+                document.getElementById('downloadBtn').disabled = !(lastCompletedJobData.outputFilename && (lastCompletedJobData.status === 'completed' || lastCompletedJobData.status === 'interrupted'));
+
             } else {
                  document.getElementById('downloadBtn').disabled = true;
             }
 
-            showMessage(statusMessage, messageType);
-            // Do not call addLog here if statusMessage is already a log from server.
-            // addLog(statusMessage); // Server now sends logs.
+            showMessage(statusMessage, messageType); // Show message for the current file
+            updateFileStatusInList(currentFile.name, resultData.status === 'completed' ? 'Completed' : (resultData.status === 'interrupted' ? 'Interrupted' : 'Error'));
 
-            isTranslating = false;
-            document.getElementById('translateBtn').disabled = !fileContent;
-            document.getElementById('translateBtn').innerHTML = '▶️ Start Translation';
-            document.getElementById('interruptBtn').classList.add('hidden');
-            document.getElementById('interruptBtn').disabled = false;
-            document.getElementById('interruptBtn').innerHTML = '⏹️ Interrupt';
+            // Reset UI elements for *current file's* translation, ready for next or completion
+            // document.getElementById('interruptBtn').classList.add('hidden'); // Interrupt handled by batch logic
+
+            // Process next file in queue
+            currentProcessingJob = null; // Clear current job
+            processNextFileInQueue(); 
         }
 
         function handleTranslationUpdate(data) {
-            if (data.log) addLog(data.log); // Server logs are now distinct from status messages.
+            if (!currentProcessingJob || data.translation_id !== currentProcessingJob.translationId) return;
+
+            const currentFile = currentProcessingJob.fileRef;
+
+            if (data.log) addLog(`[${currentFile.name}] ${data.log}`);
             if (data.progress !== undefined) updateProgress(data.progress);
             
             if (data.stats) {
@@ -269,20 +311,17 @@
             }
             
             if (data.status === 'completed') {
-                finishTranslationUI('✅ Translation completed successfully!', 'success', data);
+                finishCurrentFileTranslationUI(`✅ ${currentFile.name}: Translation completed!`, 'success', data);
             } else if (data.status === 'interrupted') {
-                finishTranslationUI('ℹ️ Translation interrupted. Partial result saved.', 'info', data);
+                finishCurrentFileTranslationUI(`ℹ️ ${currentFile.name}: Translation interrupted.`, 'info', data);
             } else if (data.status === 'error') {
-                finishTranslationUI(`❌ Error: ${data.error || 'Unknown error during translation.'}`, 'error', data);
-            } else if (data.status === 'running' && !isTranslating) {
-                 // This might happen if page was reloaded and server is still running an old task we reconnected to
-                 // Or if the initial "running" status is received.
-                 isTranslating = true; // Ensure flag is set
-                 document.getElementById('translateBtn').disabled = true;
-                 document.getElementById('translateBtn').innerHTML = '⏳ Translating...';
-                 document.getElementById('interruptBtn').classList.remove('hidden');
+                finishCurrentFileTranslationUI(`❌ ${currentFile.name}: Error - ${data.error || 'Unknown error.'}`, 'error', data);
+            } else if (data.status === 'running') {
+                 // This is expected when a file starts processing
                  document.getElementById('progressSection').classList.remove('hidden');
-                 showMessage('Translation in progress...', 'info');
+                 document.getElementById('currentFileProgressTitle').textContent = `📊 Translating: ${currentFile.name}`;
+                 showMessage(`Translation in progress for ${currentFile.name}...`, 'info');
+                 updateFileStatusInList(currentFile.name, 'Processing');
             }
         }
         
@@ -309,6 +348,7 @@
         });
         
         async function loadAvailableModels() {
+            // ... (Function largely unchanged, logs still global) ...
             const modelSelect = document.getElementById('model');
             modelSelect.innerHTML = '<option value="">Loading models...</option>';
             try {
@@ -351,146 +391,227 @@
         fileUploadArea.addEventListener('dragleave', () => fileUploadArea.classList.remove('dragging'));
         fileUploadArea.addEventListener('drop', (e) => {
             e.preventDefault(); fileUploadArea.classList.remove('dragging');
-            const file = e.dataTransfer.files[0];
-            if (file && file.type === 'text/plain') processFile(file);
-            else showMessage('Please drop a .txt file.', 'error');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                Array.from(files).forEach(file => {
+                    if (file.type === 'text/plain') addFileToList(file);
+                    else showMessage(`File '${file.name}' is not a .txt file and was skipped.`, 'error');
+                });
+                updateFileDisplay();
+            }
         });
 
-        function toggleAdvanced() {
+        function toggleAdvanced() { /* ... (Unchanged) ... */ 
             const settings = document.getElementById('advancedSettings');
             document.getElementById('advancedIcon').textContent = settings.classList.toggle('hidden') ? '▼' : '▲';
         }
-        
-        function checkCustomSourceLanguage(selectElement) {
+        function checkCustomSourceLanguage(selectElement) { /* ... (Unchanged) ... */ 
             const customLangInput = document.getElementById('customSourceLang');
             customLangInput.style.display = (selectElement.value === 'Other') ? 'block' : 'none';
             if (selectElement.value === 'Other') customLangInput.focus();
         }
-
-        function checkCustomTargetLanguage(selectElement) { // Renamed for clarity
+        function checkCustomTargetLanguage(selectElement) { /* ... (Unchanged) ... */ 
             const customLangInput = document.getElementById('customTargetLang');
             customLangInput.style.display = (selectElement.value === 'Other') ? 'block' : 'none';
             if (selectElement.value === 'Other') customLangInput.focus();
         }
 
+        // MODIFIED: Handle multiple files
         function handleFileSelect(e) {
-            const file = e.target.files[0];
-            if (file && file.type === 'text/plain') processFile(file);
-            else showMessage('Please select a .txt file.', 'error');
+            const files = e.target.files;
+            if (files.length > 0) {
+                Array.from(files).forEach(file => {
+                    if (file.type === 'text/plain') addFileToList(file);
+                    else showMessage(`File '${file.name}' is not a .txt file and was skipped.`, 'error');
+                });
+                updateFileDisplay();
+            }
+             document.getElementById('fileInput').value = ''; // Reset file input to allow re-selection of same file if cleared
         }
-
-        function processFile(file) {
-            originalFileName = file.name;
+        
+        function addFileToList(file) {
+            if (filesToProcess.find(f => f.name === file.name)) {
+                showMessage(`File '${file.name}' is already in the list.`, 'info');
+                return;
+            }
             const reader = new FileReader();
             reader.onload = (e) => {
-                fileContent = e.target.result;
-                document.getElementById('fileNameDisplay').textContent = `📄 ${originalFileName} (${(file.size / 1024).toFixed(2)} KB)`;
-                document.getElementById('fileInfo').classList.remove('hidden');
-                document.getElementById('translateBtn').disabled = false;
-                document.getElementById('outputFilename').value = `translated_${originalFileName.replace(/\.[^/.]+$/, "")}.txt`;
-                addLog(`File loaded: ${originalFileName}`);
-                showMessage('File loaded. Ready to translate.', 'success');
+                const originalNameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
+                const outputPattern = document.getElementById('outputFilenamePattern').value || "translated_{originalName}.txt";
+                const outputFilename = outputPattern.replace("{originalName}", originalNameWithoutExt);
+
+                filesToProcess.push({
+                    name: file.name,
+                    content: e.target.result,
+                    status: 'Queued',
+                    outputFilename: outputFilename,
+                    size: file.size,
+                    translationId: null,
+                    result: null
+                });
+                updateFileDisplay(); // Update display after each file is read
             };
             reader.readAsText(file);
         }
 
-        function resetFile() {
-            fileContent = ''; originalFileName = ''; currentTranslationId = null;
-            document.getElementById('fileInput').value = '';
-            document.getElementById('fileInfo').classList.add('hidden');
-            document.getElementById('fileNameDisplay').textContent = '';
-            document.getElementById('translateBtn').disabled = true;
+        function updateFileDisplay() {
+            const fileListContainer = document.getElementById('fileListContainer');
+            fileListContainer.innerHTML = ''; // Clear current list
+
+            if (filesToProcess.length > 0) {
+                filesToProcess.forEach(file => {
+                    const li = document.createElement('li');
+                    li.setAttribute('data-filename', file.name); // For easier selection later
+                    li.textContent = `${file.name} (${(file.size / 1024).toFixed(2)} KB) `;
+                    const statusSpan = document.createElement('span');
+                    statusSpan.className = 'file-status';
+                    statusSpan.textContent = `(${file.status})`;
+                    li.appendChild(statusSpan);
+                    fileListContainer.appendChild(li);
+                });
+                document.getElementById('fileInfo').classList.remove('hidden');
+                document.getElementById('translateBtn').disabled = isBatchActive; // Disable if batch is active, enable otherwise
+            } else {
+                document.getElementById('fileInfo').classList.add('hidden');
+                document.getElementById('translateBtn').disabled = true;
+            }
+        }
+
+        // MODIFIED: Reset for multiple files
+        function resetFiles() {
+            filesToProcess = [];
+            translationQueue = [];
+            currentProcessingJob = null;
+            isBatchActive = false;
+            lastCompletedJobData = null;
+
+            document.getElementById('fileInput').value = ''; // Clear the file input
+            updateFileDisplay(); // Will hide fileInfo and disable translateBtn
+
             document.getElementById('progressSection').classList.add('hidden');
             document.getElementById('outputSection').classList.add('hidden');
             document.getElementById('logContainer').innerHTML = '';
+            document.getElementById('translateBtn').innerHTML = '▶️ Start Translation Batch';
+            document.getElementById('translateBtn').disabled = true; // Should be disabled by updateFileDisplay
             document.getElementById('interruptBtn').classList.add('hidden');
-            document.getElementById('customSourceLang').style.display = 'none'; // Hide custom fields
+            document.getElementById('interruptBtn').disabled = false;
+            document.getElementById('interruptBtn').innerHTML = '⏹️ Interrupt Current & Stop Batch';
+            
+            document.getElementById('customSourceLang').style.display = 'none';
             document.getElementById('customTargetLang').style.display = 'none';
-            document.getElementById('sourceLang').selectedIndex = 0; // Reset dropdowns
+            document.getElementById('sourceLang').selectedIndex = 0;
             document.getElementById('targetLang').selectedIndex = 0;
             updateProgress(0);
-            showMessage('', '');
-            addLog("Form reset.");
+            showMessage('', ''); // Clear messages
+            addLog("Form and file list reset.");
         }
 
-        function showMessage(text, type) {
+        function showMessage(text, type) { /* ... (Unchanged) ... */ 
             const messagesDiv = document.getElementById('messages');
             messagesDiv.innerHTML = text ? `<div class="message ${type}">${text}</div>` : '';
         }
-
-        function addLog(message) {
+        function addLog(message) { /* ... (Unchanged, but logs now might be prefixed) ... */ 
             const logContainer = document.getElementById('logContainer');
-            logContainer.innerHTML += `[${new Date().toLocaleTimeString()}] ${message}\n`;
+            logContainer.innerHTML += `[${new Date().toLocaleTimeString()}] ${message}\n`; // Consider prefixing with current file name if currentProcessingJob is set
             logContainer.scrollTop = logContainer.scrollHeight;
         }
 
         function earlyValidationFail(message) {
             showMessage(message, 'error');
-            isTranslating = false;
-            document.getElementById('translateBtn').disabled = !fileContent;
-            document.getElementById('translateBtn').innerHTML = '▶️ Start Translation';
+            isBatchActive = false; // Ensure batch is not considered active
+            document.getElementById('translateBtn').disabled = filesToProcess.length === 0;
+            document.getElementById('translateBtn').innerHTML = '▶️ Start Translation Batch';
             document.getElementById('interruptBtn').classList.add('hidden');
-            return false; // To indicate failure
+            return false;
         }
 
-        async function startTranslation() {
-            if (isTranslating || !fileContent) return;
+        // MODIFIED: Start batch translation
+        async function startBatchTranslation() {
+            if (isBatchActive || filesToProcess.length === 0) return;
 
-            isTranslating = true;
-            currentTranslationId = null;
-            translatedContentFromServer = '';
-            
-            showMessage('', ''); // Clear previous messages
-            document.getElementById('logContainer').innerHTML = ''; // FIX: Clear log container correctly
-
+            // Basic validation before starting the whole batch
             let sourceLanguageVal = document.getElementById('sourceLang').value;
             if (sourceLanguageVal === 'Other') {
                 sourceLanguageVal = document.getElementById('customSourceLang').value.trim();
-                if (!sourceLanguageVal) return earlyValidationFail('Please specify the custom source language.');
+                if (!sourceLanguageVal) return earlyValidationFail('Please specify the custom source language for the batch.');
             }
-            
             let targetLanguageVal = document.getElementById('targetLang').value;
             if (targetLanguageVal === 'Other') {
                 targetLanguageVal = document.getElementById('customTargetLang').value.trim();
-                if (!targetLanguageVal) return earlyValidationFail('Please specify the custom target language.');
+                if (!targetLanguageVal) return earlyValidationFail('Please specify the custom target language for the batch.');
             }
-            
-            const outputFilename = document.getElementById('outputFilename').value.trim();
-            if (!outputFilename) return earlyValidationFail('Output filename cannot be empty.');
-
             const selectedModel = document.getElementById('model').value;
-            if (!selectedModel) return earlyValidationFail('Please select an LLM model.');
-
+            if (!selectedModel) return earlyValidationFail('Please select an LLM model for the batch.');
             const ollamaApiEndpoint = document.getElementById('apiEndpoint').value.trim();
-            if (!ollamaApiEndpoint) return earlyValidationFail('Ollama API Endpoint cannot be empty.');
+            if (!ollamaApiEndpoint) return earlyValidationFail('Ollama API Endpoint cannot be empty for the batch.');
+
+            isBatchActive = true;
+            translationQueue = [...filesToProcess]; // Copy files to a processing queue
+            
+            document.getElementById('translateBtn').disabled = true;
+            document.getElementById('translateBtn').innerHTML = '⏳ Batch in Progress...';
+            document.getElementById('interruptBtn').classList.remove('hidden');
+            document.getElementById('interruptBtn').disabled = false;
+            
+            document.getElementById('outputSection').classList.add('hidden'); // Hide previous output
+            document.getElementById('logContainer').innerHTML = ''; // Clear logs for the new batch (or new file)
+
+            addLog(`🚀 Batch translation started for ${translationQueue.length} file(s).`);
+            showMessage(`Batch of ${translationQueue.length} file(s) initiated.`, 'info');
+            
+            processNextFileInQueue();
+        }
+
+        async function processNextFileInQueue() {
+            if (currentProcessingJob) return; // Already processing one
+
+            if (translationQueue.length === 0) {
+                isBatchActive = false;
+                document.getElementById('translateBtn').disabled = filesToProcess.length === 0; // Re-enable if new files can be added
+                document.getElementById('translateBtn').innerHTML = '▶️ Start Translation Batch';
+                document.getElementById('interruptBtn').classList.add('hidden');
+                showMessage('✅ Batch translation completed for all files!', 'success');
+                addLog('🏁 All files in the batch have been processed.');
+                // Progress section can be hidden or show "Batch complete"
+                // document.getElementById('progressSection').classList.add('hidden'); 
+                document.getElementById('currentFileProgressTitle').textContent = `📊 Batch Completed`;
+                return;
+            }
+
+            const fileToTranslate = translationQueue.shift(); // Get next file from queue
+
+            // Reset UI for the new file's progress
+            updateProgress(0);
+            ['totalChunks', 'completedChunks', 'failedChunks'].forEach(id => document.getElementById(id).textContent = '0');
+            document.getElementById('elapsedTime').textContent = '0s';
+            document.getElementById('logContainer').innerHTML = ''; // Clear logs for the new file
+            document.getElementById('outputSection').classList.add('hidden'); // Hide previous output
+             document.getElementById('downloadBtn').disabled = true;
+
+
+            document.getElementById('currentFileProgressTitle').textContent = `📊 Translating: ${fileToTranslate.name}`;
+            document.getElementById('progressSection').classList.remove('hidden');
+            addLog(`▶️ Starting translation for: ${fileToTranslate.name}`);
+            updateFileStatusInList(fileToTranslate.name, 'Preparing...');
+
+            let sourceLanguageVal = document.getElementById('sourceLang').value;
+            if (sourceLanguageVal === 'Other') sourceLanguageVal = document.getElementById('customSourceLang').value.trim();
+            let targetLanguageVal = document.getElementById('targetLang').value;
+            if (targetLanguageVal === 'Other') targetLanguageVal = document.getElementById('customTargetLang').value.trim();
 
             const config = {
-                text: fileContent,
+                text: fileToTranslate.content,
                 source_language: sourceLanguageVal,
                 target_language: targetLanguageVal,
-                model: selectedModel,
-                api_endpoint: ollamaApiEndpoint,
+                model: document.getElementById('model').value,
+                api_endpoint: document.getElementById('apiEndpoint').value,
                 chunk_size: parseInt(document.getElementById('chunkSize').value),
                 timeout: parseInt(document.getElementById('timeout').value),
                 context_window: parseInt(document.getElementById('contextWindow').value),
                 max_attempts: parseInt(document.getElementById('maxAttempts').value),
                 retry_delay: parseInt(document.getElementById('retryDelay').value),
-                output_filename: outputFilename
+                output_filename: fileToTranslate.outputFilename 
             };
-            
-            document.getElementById('translateBtn').disabled = true;
-            document.getElementById('translateBtn').innerHTML = '⏳ Translating...';
-            document.getElementById('interruptBtn').classList.remove('hidden');
-            document.getElementById('interruptBtn').disabled = false;
-            document.getElementById('interruptBtn').innerHTML = '⏹️ Interrupt';
-            document.getElementById('progressSection').classList.remove('hidden');
-            document.getElementById('outputSection').classList.add('hidden');
-            updateProgress(0);
-            ['totalChunks', 'completedChunks', 'failedChunks'].forEach(id => document.getElementById(id).textContent = '0');
-            document.getElementById('elapsedTime').textContent = '0s';
-            
-            showMessage('Initiating translation with server...', 'info');
-            addLog("🚀 Translation process initiated by user.");
 
             try {
                 const response = await fetch(`${API_BASE_URL}/api/translate`, {
@@ -500,56 +621,77 @@
                 });
                 if (!response.ok) {
                     const errorData = await response.json();
-                    throw new Error(errorData.error || `Server error ${response.status} while initiating translation.`);
+                    throw new Error(errorData.error || `Server error ${response.status} for ${fileToTranslate.name}.`);
                 }
                 const data = await response.json();
-                currentTranslationId = data.translation_id;
-                // Backend will now send first log via WebSocket after picking up task
-                // addLog(`📋 Translation started with ID: ${currentTranslationId}. Config: ${JSON.stringify(data.config_received, null, 2)}`);
+                currentProcessingJob = { fileRef: fileToTranslate, translationId: data.translation_id };
+                fileToTranslate.translationId = data.translation_id; // Store ID with the file object
+                updateFileStatusInList(fileToTranslate.name, 'Submitted', data.translation_id);
+                // First log/status update will come via WebSocket from server
             } catch (error) {
-                finishTranslationUI(`❌ Error initiating translation: ${error.message}`, 'error', null);
+                addLog(`❌ Error initiating translation for ${fileToTranslate.name}: ${error.message}`);
+                showMessage(`Error starting ${fileToTranslate.name}: ${error.message}`, 'error');
+                updateFileStatusInList(fileToTranslate.name, 'Initiation Error');
+                currentProcessingJob = null; // Clear job so next can start
+                processNextFileInQueue(); // Try next file
             }
         }
         
-        async function interruptTranslation() {
-            if (!isTranslating || !currentTranslationId) {
+        // MODIFIED: Interrupt current file and stop the batch
+        async function interruptCurrentTranslation() {
+            if (!isBatchActive || !currentProcessingJob) {
                 showMessage('No active translation to interrupt.', 'info');
                 return;
             }
+
+            const fileToInterrupt = currentProcessingJob.fileRef;
+            const tidToInterrupt = currentProcessingJob.translationId;
+
             document.getElementById('interruptBtn').disabled = true;
             document.getElementById('interruptBtn').innerHTML = '⏳ Interrupting...';
-            addLog('🛑 User requested interruption...');
+            addLog(`🛑 User requested interruption for ${fileToInterrupt.name} (ID: ${tidToInterrupt}). This will stop the batch.`);
+            
+            translationQueue = []; // Clear the rest of the queue
+
             try {
-                const response = await fetch(`${API_BASE_URL}/api/translation/${currentTranslationId}/interrupt`, { method: 'POST' });
+                const response = await fetch(`${API_BASE_URL}/api/translation/${tidToInterrupt}/interrupt`, { method: 'POST' });
                 if (!response.ok) {
                     const errData = await response.json();
-                    throw new Error(errData.message || `Failed to send interrupt signal.`);
+                    throw new Error(errData.message || `Failed to send interrupt signal for ${fileToInterrupt.name}.`);
                 }
-                // Message will be updated via WebSocket by server
-                // showMessage('ℹ️ Interruption request sent. Finishing current chunk and saving...', 'info');
+                // Message will be updated via WebSocket by server for the current file.
+                // The call to processNextFileInQueue() in handleTranslationUpdate will find an empty queue.
+                showMessage(`ℹ️ Interruption for ${fileToInterrupt.name} requested. Batch will stop after this file.`, 'info');
             } catch (error) {
-                showMessage(`❌ Error sending interruption: ${error.message}`, 'error');
-                if (isTranslating && currentTranslationId) { // Only re-enable if still in a translating state
-                     document.getElementById('interruptBtn').disabled = false;
-                     document.getElementById('interruptBtn').innerHTML = '⏹️ Interrupt';
-                }
+                showMessage(`❌ Error sending interruption for ${fileToInterrupt.name}: ${error.message}`, 'error');
+                // Re-enable interrupt button only if we are sure the job is still somehow active
+                // For simplicity, the batch stop is already signaled by clearing the queue.
+                // The current job will eventually finish (interrupted or error) and then batch ends.
+                 document.getElementById('interruptBtn').disabled = false; // Re-enable if error, as interrupt might not have registered
+                 document.getElementById('interruptBtn').innerHTML = '⏹️ Interrupt Current & Stop Batch';
+
             }
         }
 
-        function updateProgress(percent) {
+        function updateProgress(percent) { /* ... (Unchanged) ... */ 
             const progressBar = document.getElementById('progressBar');
             progressBar.style.width = percent + '%';
             progressBar.textContent = Math.round(percent) + '%';
         }
 
-        function downloadTranslation() {
-            if (!currentTranslationId) {
-                showMessage('No translation ID available for download.', 'error'); return;
+        // MODIFIED: Download for the last completed file
+        function downloadLastTranslation() {
+            if (!lastCompletedJobData || !lastCompletedJobData.translationId) {
+                showMessage('No completed translation available for download, or ID missing.', 'error'); return;
             }
-            const downloadUrl = `${API_BASE_URL}/api/download/${currentTranslationId}`;
-            addLog(`Initiating download from: ${downloadUrl}`);
+            if (lastCompletedJobData.status !== 'completed' && lastCompletedJobData.status !== 'interrupted') {
+                 showMessage(`Cannot download file as its status is '${lastCompletedJobData.status}'.`, 'error'); return;
+            }
+            const downloadUrl = `${API_BASE_URL}/api/download/${lastCompletedJobData.translationId}`;
+            addLog(`Initiating download for ${lastCompletedJobData.outputFilename} from: ${downloadUrl}`);
             window.location.href = downloadUrl;
         }
+
     </script>
 </body>
 </html>
