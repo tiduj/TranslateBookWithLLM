@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="fr">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LLM Translator Pro</title>
+    <title>Translating Books With LLMs</title>
     <style>
         * {
             margin: 0;
@@ -252,110 +252,118 @@
             border: 1px solid #cfc;
             color: #060;
         }
+        
+        .info {
+            background: #e6f3ff;
+            border: 1px solid #b3d9ff;
+            color: #0066cc;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🌐 LLM Translator Pro</h1>
-            <p>Traduction de documents avec modèles de langage locaux</p>
+            <h1>🌐 Translating Books With LLMs</h1>
+            <p>Translate documents with local language models</p>
         </div>
 
         <div class="main-card">
             <div class="card-header">
-                <h2>⚙️ Configuration de la traduction</h2>
+                <h2>⚙️ Translation Configuration</h2>
             </div>
 
             <div class="card-body">
                 <div class="config-grid">
                     <div class="form-group">
-                        <label>Point d'accès API</label>
+                        <label>API Endpoint</label>
                         <input type="text" class="form-control" id="apiEndpoint" value="http://localhost:11434/api/generate">
                     </div>
 
                     <div class="form-group">
-                        <label>Modèle LLM</label>
-                        <select class="form-control" id="model">
-                            <option value="mistral-small:24b">Mistral Small 24B</option>
-                            <option value="mistral:7b">Mistral 7B</option>
-                            <option value="llama3:8b">Llama 3 8B</option>
-                            <option value="mixtral:8x7b">Mixtral 8x7B</option>
-                        </select>
+                        <label>LLM Model</label>
+                        <div style="display: flex; gap: 10px;">
+                            <select class="form-control" id="model" style="flex: 1;">
+                                <option value="">Loading models...</option>
+                            </select>
+                            <button class="btn btn-secondary" onclick="loadAvailableModels()" title="Refresh model list">
+                                🔄
+                            </button>
+                        </div>
                     </div>
 
                     <div class="form-group">
-                        <label>Langue source</label>
+                        <label>Source Language</label>
                         <select class="form-control" id="sourceLang">
-                            <option value="English">Anglais</option>
-                            <option value="French">Français</option>
-                            <option value="Spanish">Espagnol</option>
-                            <option value="German">Allemand</option>
-                            <option value="Italian">Italien</option>
+                            <option value="English">English</option>
+                            <option value="French">French</option>
+                            <option value="Spanish">Spanish</option>
+                            <option value="German">German</option>
+                            <option value="Italian">Italian</option>
                         </select>
                     </div>
 
                     <div class="form-group">
-                        <label>Langue cible</label>
+                        <label>Target Language</label>
                         <select class="form-control" id="targetLang">
-                            <option value="French">Français</option>
-                            <option value="English">Anglais</option>
-                            <option value="Spanish">Espagnol</option>
-                            <option value="German">Allemand</option>
-                            <option value="Italian">Italien</option>
+                            <option value="French">French</option>
+                            <option value="English">English</option>
+                            <option value="Spanish">Spanish</option>
+                            <option value="German">German</option>
+                            <option value="Italian">Italian</option>
                         </select>
                     </div>
                 </div>
 
                 <div class="advanced-toggle" onclick="toggleAdvanced()">
-                    <span>🔧 Paramètres avancés</span>
+                    <span>🔧 Advanced Settings</span>
                     <span id="advancedIcon">▼</span>
                 </div>
 
                 <div id="advancedSettings" class="advanced-settings hidden">
                     <div class="config-grid">
                         <div class="form-group">
-                            <label>Taille des chunks (lignes)</label>
+                            <label>Chunk Size (lines)</label>
                             <input type="number" class="form-control" id="chunkSize" value="25" min="10" max="100">
                         </div>
 
                         <div class="form-group">
-                            <label>Timeout (secondes)</label>
+                            <label>Timeout (seconds)</label>
                             <input type="number" class="form-control" id="timeout" value="180" min="30" max="600">
                         </div>
 
                         <div class="form-group">
-                            <label>Fenêtre de contexte</label>
+                            <label>Context Window</label>
                             <input type="number" class="form-control" id="contextWindow" value="4096" min="1024" max="32768">
                         </div>
 
                         <div class="form-group">
-                            <label>Tentatives max</label>
+                            <label>Max Attempts</label>
                             <input type="number" class="form-control" id="maxAttempts" value="2" min="1" max="5">
                         </div>
                     </div>
                 </div>
 
                 <div class="file-upload" id="fileUpload" onclick="document.getElementById('fileInput').click()">
-                    <h3>📁 Glissez-déposez votre fichier ici</h3>
-                    <p>ou cliquez pour sélectionner un fichier .txt</p>
+                    <h3>📁 Drag & Drop your file here</h3>
+                    <p>or click to select a .txt file</p>
                     <input type="file" id="fileInput" accept=".txt" style="display: none;" onchange="handleFileSelect(event)">
                 </div>
 
                 <div id="fileInfo" class="hidden" style="margin-bottom: 20px; padding: 15px; background: #f3f4f6; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
                     <span id="fileName"></span>
-                    <button class="btn" onclick="resetFile()">❌ Supprimer</button>
+                    <button class="btn" onclick="resetFile()">❌ Clear</button>
                 </div>
 
                 <div id="messages"></div>
 
                 <div style="text-align: center; margin-top: 30px;">
                     <button class="btn btn-primary" id="translateBtn" onclick="startTranslation()" disabled>
-                        ▶️ Lancer la traduction
+                        ▶️ Start Translation
                     </button>
                 </div>
 
                 <div id="progressSection" class="progress-section hidden">
-                    <h3>📊 Progression de la traduction</h3>
+                    <h3>📊 Translation Progress</h3>
                     
                     <div class="progress-bar-container">
                         <div class="progress-bar" id="progressBar" style="width: 0%">0%</div>
@@ -364,38 +372,38 @@
                     <div class="stats-grid">
                         <div class="stat-card">
                             <h3 id="totalChunks">0</h3>
-                            <p>Chunks totaux</p>
+                            <p>Total Chunks</p>
                         </div>
                         <div class="stat-card">
                             <h3 id="completedChunks">0</h3>
-                            <p>Complétés</p>
+                            <p>Completed</p>
                         </div>
                         <div class="stat-card">
                             <h3 id="failedChunks">0</h3>
-                            <p>Échoués</p>
+                            <p>Failed</p>
                         </div>
                         <div class="stat-card">
                             <h3 id="elapsedTime">0s</h3>
-                            <p>Temps écoulé</p>
+                            <p>Time Elapsed</p>
                         </div>
                     </div>
 
-                    <h4>💻 Journal d'activité</h4>
+                    <h4>💻 Activity Log</h4>
                     <div class="log-container" id="logContainer"></div>
                 </div>
 
                 <div id="outputSection" class="output-section hidden">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
-                        <h3>📄 Résultat de la traduction</h3>
+                        <h3>📄 Translation Result</h3>
                         <button class="btn btn-primary" onclick="downloadTranslation()">
-                            ⬇️ Télécharger
+                            ⬇️ Download
                         </button>
                     </div>
                     
                     <div class="output-preview" id="outputPreview"></div>
                     
                     <p style="margin-top: 15px; color: #6b7280; font-size: 14px;">
-                        ℹ️ Aperçu limité aux 1000 premiers caractères
+                        ℹ️ Preview limited to the first 1000 characters
                     </p>
                 </div>
             </div>
@@ -411,20 +419,20 @@
         let startTime = null;
         let currentTranslationId = null;
         
-        // Configuration de l'API
+        // API Configuration
         const API_URL = 'http://localhost:5000';
         
-        // Connexion WebSocket pour les mises à jour en temps réel
+        // WebSocket connection for real-time updates
         const socket = io(API_URL);
         
         socket.on('connect', () => {
-            console.log('Connecté au serveur de traduction');
-            addLog('✅ Connexion au serveur établie');
+            console.log('Connected to translation server');
+            addLog('✅ Connection to server established');
         });
         
         socket.on('disconnect', () => {
-            console.log('Déconnecté du serveur');
-            addLog('❌ Connexion au serveur perdue');
+            console.log('Disconnected from server');
+            addLog('❌ Connection to server lost');
         });
         
         socket.on('translation_update', (data) => {
@@ -464,36 +472,84 @@
                     (translatedContent.length > 1000 ? '...' : '');
                 
                 document.getElementById('outputSection').classList.remove('hidden');
-                showMessage('✅ Traduction terminée avec succès !', 'success');
+                showMessage('✅ Translation completed successfully!', 'success');
                 
                 isTranslating = false;
                 document.getElementById('translateBtn').disabled = false;
-                document.getElementById('translateBtn').innerHTML = '▶️ Lancer la traduction';
+                document.getElementById('translateBtn').innerHTML = '▶️ Start Translation';
             }
             
             if (data.error) {
-                showMessage('❌ Erreur: ' + data.error, 'error');
+                showMessage('❌ Error: ' + data.error, 'error');
                 isTranslating = false;
                 document.getElementById('translateBtn').disabled = false;
-                document.getElementById('translateBtn').innerHTML = '▶️ Lancer la traduction';
+                document.getElementById('translateBtn').innerHTML = '▶️ Start Translation';
             }
         }
         
-        // Vérifier la connexion au serveur au chargement
+        // Check server connection on load
         window.addEventListener('load', async () => {
             try {
                 const response = await fetch(`${API_URL}/api/health`);
                 if (response.ok) {
-                    console.log('API de traduction accessible');
+                    console.log('Translation API accessible');
+                    // Load available models
+                    loadAvailableModels();
                 } else {
-                    showMessage('⚠️ Impossible de se connecter au serveur de traduction', 'error');
+                    showMessage('⚠️ Cannot connect to translation server', 'error');
                 }
             } catch (error) {
-                showMessage('⚠️ Serveur de traduction non disponible. Assurez-vous que le serveur Python est lancé.', 'error');
+                showMessage('⚠️ Translation server unavailable. Make sure the Python server is running.', 'error');
             }
         });
+        
+        async function loadAvailableModels() {
+            try {
+                const response = await fetch(`${API_URL}/api/models`);
+                if (response.ok) {
+                    const data = await response.json();
+                    const modelSelect = document.getElementById('model');
+                    
+                    // Clear current list
+                    modelSelect.innerHTML = '';
+                    
+                    if (data.models && data.models.length > 0) {
+                        // Add available models
+                        data.models.forEach(model => {
+                            const option = document.createElement('option');
+                            option.value = model;
+                            option.textContent = model;
+                            if (model === data.default) {
+                                option.selected = true;
+                            }
+                            modelSelect.appendChild(option);
+                        });
+                        
+                        addLog(`✅ ${data.count} LLM model(s) available`);
+                        
+                        // Show a message if the default model is not in the list
+                        if (data.default && !data.models.includes(data.default)) {
+                            showMessage(`ℹ️ Default model '${data.default}' is not installed. Using '${data.models[0]}'`, 'info');
+                        }
+                    } else {
+                        // No models available
+                        showMessage('⚠️ No LLM models found. Install a model with: ollama pull mistral-small', 'error');
+                        const option = document.createElement('option');
+                        option.value = '';
+                        option.textContent = 'No models available';
+                        modelSelect.appendChild(option);
+                        document.getElementById('translateBtn').disabled = true;
+                    }
+                } else {
+                    console.error('Error fetching models');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                addLog('❌ Failed to retrieve model list');
+            }
+        }
 
-        // Gestion du drag & drop
+        // Handle drag & drop
         const fileUpload = document.getElementById('fileUpload');
         
         fileUpload.addEventListener('dragover', (e) => {
@@ -513,7 +569,7 @@
             if (file && file.type === 'text/plain') {
                 processFile(file);
             } else {
-                showMessage('Veuillez déposer un fichier texte (.txt)', 'error');
+                showMessage('Please drop a text file (.txt)', 'error');
             }
         });
 
@@ -535,7 +591,7 @@
             if (file && file.type === 'text/plain') {
                 processFile(file);
             } else {
-                showMessage('Veuillez sélectionner un fichier texte (.txt)', 'error');
+                showMessage('Please select a text file (.txt)', 'error');
             }
         }
 
@@ -549,7 +605,7 @@
                 document.getElementById('fileInfo').classList.remove('hidden');
                 document.getElementById('fileInfo').style.display = 'flex';
                 document.getElementById('translateBtn').disabled = false;
-                addLog(`Fichier chargé: ${fileName}`);
+                addLog(`File loaded: ${fileName}`);
             };
             
             reader.readAsText(file);
@@ -590,7 +646,7 @@
             startTime = Date.now();
             translatedContent = '';
             
-            // Récupération des paramètres
+            // Get parameters
             const config = {
                 text: fileContent,
                 source_language: document.getElementById('sourceLang').value,
@@ -606,20 +662,20 @@
             
             // UI
             document.getElementById('translateBtn').disabled = true;
-            document.getElementById('translateBtn').innerHTML = '⏳ Traduction en cours...';
+            document.getElementById('translateBtn').innerHTML = '⏳ Translating...';
             document.getElementById('progressSection').classList.remove('hidden');
             document.getElementById('outputSection').classList.add('hidden');
             document.getElementById('logContainer').innerHTML = '';
             showMessage('', '');
             
-            // Réinitialiser les stats
+            // Reset stats
             document.getElementById('totalChunks').textContent = '0';
             document.getElementById('completedChunks').textContent = '0';
             document.getElementById('failedChunks').textContent = '0';
             document.getElementById('elapsedTime').textContent = '0s';
             
             try {
-                // Lancer la traduction via l'API
+                // Start translation via API
                 const response = await fetch(`${API_URL}/api/translate`, {
                     method: 'POST',
                     headers: {
@@ -629,19 +685,19 @@
                 });
                 
                 if (!response.ok) {
-                    throw new Error('Erreur lors du lancement de la traduction');
+                    throw new Error('Error initiating translation');
                 }
                 
                 const data = await response.json();
                 currentTranslationId = data.translation_id;
                 
-                addLog(`📋 ID de traduction: ${currentTranslationId}`);
+                addLog(`📋 Translation ID: ${currentTranslationId}`);
                 
             } catch (error) {
-                showMessage('❌ Erreur: ' + error.message, 'error');
+                showMessage('❌ Error: ' + error.message, 'error');
                 isTranslating = false;
                 document.getElementById('translateBtn').disabled = false;
-                document.getElementById('translateBtn').innerHTML = '▶️ Lancer la traduction';
+                document.getElementById('translateBtn').innerHTML = '▶️ Start Translation';
             }
         }
 
@@ -668,7 +724,7 @@
             a.click();
             document.body.removeChild(a);
             URL.revokeObjectURL(url);
-            addLog('Fichier traduit téléchargé');
+            addLog('Translated file downloaded');
         }
     </script>
 </body>
