@@ -7,46 +7,7 @@ A Python application designed for large-scale text translation, such as entire b
 - 🌐 **Web Interface**: User-friendly browser-based interface with real-time progress tracking
 - 💻 **CLI Support**: Command-line interface for automation and scripting
 
-## Quick Start (Web Interface - Recommended)
-
-### 1. Prerequisites
-
-- **Python 3.9+** with pip
-- **Ollama** installed and running ([Download here](https://ollama.com/))
-
-### 2. Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/hydropix/TranslateBookWithLLM.git
-cd TranslateBookWithLLM
-
-# Install dependencies
-pip install flask flask-cors flask-socketio python-socketio requests tqdm aiohttp
-
-# Pull an LLM model (example)
-ollama pull mistral-small:24b
-```
-
-### 3. Launch the Web Interface
-
-```bash
-# Start the web server
-python translation_api.py
-```
-
-Open your browser and navigate to: **http://localhost:5000**
-
-### 4. Using the Web Interface
-
-1. **Configure Settings**: Select your source/target languages and LLM model
-2. **Upload File**: Drag & drop or select your .txt file
-3. **Start Translation**: Click "Start Translation" and monitor real-time progress
-4. **Download Result**: Download your translated file when complete
-
----
-
-## Windows Installation Guide (Detailed)
+## Windows Installation Guide
 
 This comprehensive guide walks you through setting up the complete environment on Windows.
 
