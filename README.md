@@ -118,7 +118,7 @@ This guide will assume the script is in `C:\Projects\TranslateBookWithLLM`.
     ```bash
     pip install requests tqdm
     ```
-    or if you wish to use the version with a web interface
+    if you wish to use the version with a web interface
     ```bash
     pip install flask flask-cors flask-socketio python-socketio requests tqdm aiohttp
     ```
