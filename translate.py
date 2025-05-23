@@ -8,7 +8,7 @@ import argparse
 
 # --- Configuration ---
 # User settings: Modify these values to change the script's default behavior.
-API_ENDPOINT = "http://localhost:11434/api/generate"  # Ollama API endpoint
+API_ENDPOINT = "http://localhost:11434/api/generate"  # Ollama API endpoint (default if not overridden)
 DEFAULT_MODEL = "mistral-small:24b"  # Default LLM model to use for translation, best for french language
 MAIN_LINES_PER_CHUNK = 25  # Target number of main lines per translation chunk
 REQUEST_TIMEOUT = 180  # Timeout in seconds for API requests (adjust if your model is slow or text is very long)
@@ -117,7 +117,8 @@ def split_text_into_chunks_with_context(text, main_lines_per_chunk_target):
     return structured_chunks
 
 async def generate_translation_request(main_content, context_before, context_after, previous_translation_context,
-                                     source_language="English", target_language="French", model=DEFAULT_MODEL):
+                                     source_language="English", target_language="French", model=DEFAULT_MODEL,
+                                     api_endpoint_param=API_ENDPOINT): # Modified: Added api_endpoint_param
     full_raw_response = ""
     source_lang = source_language.upper() # For the tags
 
@@ -134,35 +135,36 @@ async def generate_translation_request(main_content, context_before, context_aft
     {main_content}
     [END OF MAIN PART TO TRANSLATE ({source_lang})]
 
-    ## [ROLE] 
+    ## [ROLE]
     # You are a {target_language} professional translator.
 
-    ## [TRANSLATION INSTRUCTIONS] 
+    ## [TRANSLATION INSTRUCTIONS]
     + Translate in the author's style.
     + Precisely preserve the deeper meaning of the text, without necessarily adhering strictly to the original wording, to enhance style and fluidity.
     + Adapt expressions and culture to the {target_language} language.
     + Vary your vocabulary with synonyms, avoid words repetition.
     + Maintain the original layout of the text, but remove typos, extraneous characters and line-break hyphens.
 
-    ## [FORMATING INSTRUCTIONS] 
+    ## [FORMATING INSTRUCTIONS]
     + Translate ONLY the text enclosed within the tags "[START OF MAIN PART TO TRANSLATE ({source_lang})]" and "[END OF MAIN PART TO TRANSLATE ({source_lang})]" from {source_lang} into {target_language}.
     + Refer to the "[START OF PREVIOUS TRANSLATION BLOCK ({target_language})]" section (if provided) to ensure consistency with the previous paragraph.
     + Surround your translation with <translate> and </translate> tags. For example: <translate>Your text translated here.</translate>
     + Return only the translation of the main part, formatted as requested.
 
-    DO NOT WRITE ANYTHING BEFORE OR AFTER.
+    DO NOT WRITE ANYTHING BEFORE AND AFTER.
     """
     payload = {
         "model": model,
         "prompt": structured_prompt,
-        "stream": False, # Set to True if you want to process streaming responses
+        "stream": False,
         "options": {
-            "num_ctx": OLLAMA_NUM_CTX # Ollama specific: context window size
+            "num_ctx": OLLAMA_NUM_CTX
         }
     }
 
     try:
-        response = requests.post(API_ENDPOINT, json=payload, timeout=REQUEST_TIMEOUT)
+        # Modified: Use api_endpoint_param instead of global API_ENDPOINT
+        response = requests.post(api_endpoint_param, json=payload, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
         json_response = response.json()
         full_raw_response = json_response.get("response", "")
@@ -176,7 +178,6 @@ async def generate_translation_request(main_content, context_before, context_aft
         print(f"\nJSON decoding error: {e}. Raw response: {response.text[:500]}...")
         return None
 
-    # Output parsing: If the LLM's output format changes, this regex will need to be updated.
     match = re.search(r"<translate>(.*?)</translate>", full_raw_response, re.DOTALL)
     if match:
         extracted_translation = match.group(1).strip()
@@ -184,14 +185,13 @@ async def generate_translation_request(main_content, context_before, context_aft
     else:
         print(f"\nWARNING: <translate>...</translate> tags not found in LLM response.")
         print(f"Raw response (partial): {full_raw_response[:500]}...")
-        # If tags are not found, you might want to return the raw response or handle it differently.
-        # For now, it returns None, leading to an error message for the chunk.
         return None
 
 
 async def translate_text_file(input_filepath, output_filepath,
                               source_language="English", target_language="French",
-                              model_name=DEFAULT_MODEL, chunk_target_size=MAIN_LINES_PER_CHUNK):
+                              model_name=DEFAULT_MODEL, chunk_target_size=MAIN_LINES_PER_CHUNK,
+                              cli_api_endpoint=API_ENDPOINT): # Added cli_api_endpoint for standalone use
     if not os.path.exists(input_filepath):
         print(f"Error: Input file '{input_filepath}' not found.")
         return
@@ -223,10 +223,12 @@ async def translate_text_file(input_filepath, output_filepath,
     print(f"The text will be translated from {source_language} to {target_language}.")
     print(f"The text has been divided into {total_chunks} main chunks.")
     print(f"Target size for each main chunk: ~{chunk_target_size} lines (may vary due to sentence alignment).")
+    print(f"Ollama API endpoint set to: {cli_api_endpoint}")
     print(f"Ollama num_ctx parameter set to: {OLLAMA_NUM_CTX} tokens.")
 
+
     full_translation_parts = []
-    last_successful_translation = "" # Used to provide context from the previously translated chunk
+    last_successful_translation = ""
 
     for i, chunk_data in enumerate(tqdm(structured_chunks, desc=f"Translating {source_language} to {target_language}", unit="chunk")):
         main_content_to_translate = chunk_data["main_content"]
@@ -235,7 +237,7 @@ async def translate_text_file(input_filepath, output_filepath,
 
         if not main_content_to_translate.strip():
             tqdm.write(f"Chunk {i+1}/{total_chunks}: Main content empty or whitespace, skipping.")
-            full_translation_parts.append("") # Append empty string to maintain order if needed later
+            full_translation_parts.append("")
             continue
 
         translated_chunk_text = None
@@ -245,7 +247,7 @@ async def translate_text_file(input_filepath, output_filepath,
             current_attempts += 1
             if current_attempts > 1:
                 tqdm.write(f"\nRetrying chunk {i+1}/{total_chunks} (attempt {current_attempts}/{MAX_TRANSLATION_ATTEMPTS})...")
-                await asyncio.sleep(RETRY_DELAY_SECONDS) # Wait before retrying
+                await asyncio.sleep(RETRY_DELAY_SECONDS)
 
             translated_chunk_text = await generate_translation_request(
                 main_content_to_translate,
@@ -254,18 +256,18 @@ async def translate_text_file(input_filepath, output_filepath,
                 last_successful_translation,
                 source_language,
                 target_language,
-                model_name
+                model_name,
+                api_endpoint_param=cli_api_endpoint # Pass endpoint for CLI use
             )
 
         if translated_chunk_text is not None:
             full_translation_parts.append(translated_chunk_text)
-            last_successful_translation = translated_chunk_text # Update context for the next chunk
+            last_successful_translation = translated_chunk_text
         else:
             tqdm.write(f"\nError translating/extracting chunk {i+1} after {MAX_TRANSLATION_ATTEMPTS} attempts. Marking as ERROR in output.")
-            # Placeholder for failed chunks. User might want to customize this.
             error_placeholder = f"[TRANSLATION/EXTRACTION ERROR CHUNK {i+1} AFTER {MAX_TRANSLATION_ATTEMPTS} ATTEMPTS - Original content ({source_language}):\n{main_content_to_translate}\nEND ERROR CHUNK {i+1}]"
             full_translation_parts.append(error_placeholder)
-            last_successful_translation = "" # Reset context if a chunk fails
+            last_successful_translation = ""
 
     print("\n--- Assembling final translation ---")
     final_translated_text = "\n".join(full_translation_parts)
@@ -276,36 +278,31 @@ async def translate_text_file(input_filepath, output_filepath,
     except Exception as e:
         print(f"Error saving output file: {e}")
 
-# --- Script Entry Point ---
 if __name__ == "__main__":
-    # Command-line arguments: These allow overriding default settings for a specific run.
     parser = argparse.ArgumentParser(description="Translate a text file using an LLM.")
     parser.add_argument("-i", "--input", required=True, help="Path to the input text file to translate.")
     parser.add_argument("-o", "--output", default="output.txt", help="Path to the output file for the translation (default: output.txt).")
-    parser.add_argument("-sl", "--source_lang", default="English", help="Source language of the text (default: English).") # User setting: Source language
-    parser.add_argument("-tl", "--target_lang", default="French", help="Target language for translation (default: French).") # User setting: Target language
-    parser.add_argument("-m", "--model", default=DEFAULT_MODEL, help=f"LLM model to use (default: {DEFAULT_MODEL}).") # User setting: Model override
-    parser.add_argument("-cs", "--chunksize", type=int, default=MAIN_LINES_PER_CHUNK, help=f"Target number of lines per chunk (default: {MAIN_LINES_PER_CHUNK}).") # User setting: Chunk size override
+    parser.add_argument("-sl", "--source_lang", default="English", help="Source language of the text (default: English).")
+    parser.add_argument("-tl", "--target_lang", default="French", help="Target language for translation (default: French).")
+    parser.add_argument("-m", "--model", default=DEFAULT_MODEL, help=f"LLM model to use (default: {DEFAULT_MODEL}).")
+    parser.add_argument("-cs", "--chunksize", type=int, default=MAIN_LINES_PER_CHUNK, help=f"Target number of lines per chunk (default: {MAIN_LINES_PER_CHUNK}).")
+    parser.add_argument("--api_endpoint", default=API_ENDPOINT, help=f"Ollama API endpoint (default: {API_ENDPOINT}).") # For CLI override
 
     args = parser.parse_args()
 
-    input_file = args.input
-    output_file = args.output
-    source_language_setting = args.source_lang
-    target_language_setting = args.target_lang
-    model_to_use = args.model
-    lines_per_chunk_for_this_run = args.chunksize
+    # ... (rest of the __main__ block)
+    cli_api_endpoint_to_use = args.api_endpoint
 
-    print(f"Starting translation from '{input_file}' ({source_language_setting}) to '{output_file}' ({target_language_setting}) using model {model_to_use}.")
-    print(f"Main content target per chunk: {lines_per_chunk_for_this_run} lines.")
-    print(f"Ollama num_ctx will be set to: {OLLAMA_NUM_CTX} tokens for each API request.")
-    print(f"Max translation attempts per chunk: {MAX_TRANSLATION_ATTEMPTS}.")
+    print(f"Starting translation from '{args.input}' ({args.source_lang}) to '{args.output}' ({args.target_lang}) using model {args.model}.")
+    print(f"Main content target per chunk: {args.chunksize} lines.")
+    print(f"Using API Endpoint: {cli_api_endpoint_to_use}") # Print the endpoint being used by CLI
 
     asyncio.run(translate_text_file(
-        input_file,
-        output_file,
-        source_language_setting,
-        target_language_setting,
-        model_to_use,
-        chunk_target_size=lines_per_chunk_for_this_run
+        args.input,
+        args.output,
+        args.source_lang,
+        args.target_lang,
+        args.model,
+        chunk_target_size=args.chunksize,
+        cli_api_endpoint=cli_api_endpoint_to_use # Pass to the function
     ))

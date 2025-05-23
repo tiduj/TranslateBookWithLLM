@@ -5,259 +5,49 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Translating Books With LLMs</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            color: #1f2937;
-            padding: 20px;
+            min-height: 100vh; color: #1f2937; padding: 20px;
         }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-
-        .header {
-            text-align: center;
-            color: white;
-            margin-bottom: 40px;
-        }
-
-        .header h1 {
-            font-size: 48px;
-            margin-bottom: 10px;
-        }
-
-        .main-card {
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
-        }
-
-        .card-header {
-            background: linear-gradient(135deg, #6366f1, #8b5cf6);
-            color: white;
-            padding: 30px;
-        }
-
-        .card-body {
-            padding: 30px;
-        }
-
-        .config-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin-bottom: 30px;
-        }
-
-        .form-group {
-            display: flex;
-            flex-direction: column;
-        }
-
-        .form-group label {
-            font-weight: 600;
-            margin-bottom: 8px;
-            color: #374151;
-        }
-
-        .form-control {
-            padding: 12px;
-            border: 2px solid #e5e7eb;
-            border-radius: 8px;
-            font-size: 16px;
-            transition: border-color 0.3s;
-        }
-
-        .form-control:focus {
-            outline: none;
-            border-color: #6366f1;
-        }
-
-        .file-upload {
-            margin: 30px 0;
-            padding: 60px;
-            border: 3px dashed #cbd5e1;
-            border-radius: 15px;
-            text-align: center;
-            background: #f9fafb;
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-
-        .file-upload:hover {
-            border-color: #6366f1;
-            background: #f0f0ff;
-        }
-
-        .file-upload.dragging {
-            border-color: #6366f1;
-            background: #e0e7ff;
-        }
-
-        .btn {
-            padding: 12px 24px;
-            border: none;
-            border-radius: 8px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, #6366f1, #4f46e5);
-            color: white;
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(99, 102, 241, 0.3);
-        }
-
-        .btn-primary:disabled {
-            opacity: 0.6;
-            cursor: not-allowed;
-            transform: none;
-        }
-
-        .progress-section {
-            margin-top: 30px;
-            padding: 30px;
-            background: #f9fafb;
-            border-radius: 15px;
-            border: 1px solid #e5e7eb;
-        }
-
-        .progress-bar-container {
-            height: 30px;
-            background: #e5e7eb;
-            border-radius: 15px;
-            overflow: hidden;
-            margin: 20px 0;
-        }
-
-        .progress-bar {
-            height: 100%;
-            background: linear-gradient(90deg, #6366f1, #8b5cf6);
-            transition: width 0.3s;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            font-weight: 600;
-        }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-            gap: 15px;
-            margin: 20px 0;
-        }
-
-        .stat-card {
-            padding: 20px;
-            background: white;
-            border-radius: 10px;
-            text-align: center;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-        }
-
-        .stat-card h3 {
-            font-size: 32px;
-            color: #6366f1;
-            margin-bottom: 5px;
-        }
-
-        .log-container {
-            max-height: 200px;
-            overflow-y: auto;
-            background: #1f2937;
-            color: #10b981;
-            padding: 15px;
-            border-radius: 8px;
-            font-family: monospace;
-            font-size: 14px;
-            margin-top: 15px;
-        }
-
-        .output-section {
-            margin-top: 30px;
-            padding: 30px;
-            background: #f9fafb;
-            border-radius: 15px;
-            border: 1px solid #e5e7eb;
-        }
-
-        .output-preview {
-            margin-top: 15px;
-            padding: 15px;
-            background: white;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            max-height: 300px;
-            overflow-y: auto;
-            white-space: pre-wrap;
-        }
-
-        .advanced-toggle {
-            margin: 20px 0;
-            padding: 15px;
-            background: #f3f4f6;
-            border-radius: 8px;
-            cursor: pointer;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .advanced-settings {
-            margin-top: 15px;
-            padding: 20px;
-            background: #fafafa;
-            border-radius: 8px;
-            border: 1px solid #e5e7eb;
-        }
-
-        .hidden {
-            display: none;
-        }
-
-        .message {
-            padding: 15px;
-            border-radius: 8px;
-            margin: 15px 0;
-        }
-
-        .error {
-            background: #fee;
-            border: 1px solid #fcc;
-            color: #c00;
-        }
-
-        .success {
-            background: #efe;
-            border: 1px solid #cfc;
-            color: #060;
-        }
-        
-        .info {
-            background: #e6f3ff;
-            border: 1px solid #b3d9ff;
-            color: #0066cc;
-        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        .header { text-align: center; color: white; margin-bottom: 40px; }
+        .header h1 { font-size: 48px; margin-bottom: 10px; }
+        .main-card { background: white; border-radius: 20px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.1); overflow: hidden; }
+        .card-header { background: linear-gradient(135deg, #6366f1, #8b5cf6); color: white; padding: 30px; }
+        .card-body { padding: 30px; }
+        .config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 30px; }
+        .form-group { display: flex; flex-direction: column; }
+        .form-group label { font-weight: 600; margin-bottom: 8px; color: #374151; }
+        .form-control { padding: 12px; border: 2px solid #e5e7eb; border-radius: 8px; font-size: 16px; transition: border-color 0.3s; }
+        .form-control:focus { outline: none; border-color: #6366f1; }
+        .file-upload { margin: 30px 0; padding: 60px; border: 3px dashed #cbd5e1; border-radius: 15px; text-align: center; background: #f9fafb; cursor: pointer; transition: all 0.3s; }
+        .file-upload:hover { border-color: #6366f1; background: #f0f0ff; }
+        .file-upload.dragging { border-color: #6366f1; background: #e0e7ff; }
+        .btn { padding: 12px 24px; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; transition: all 0.3s; display: inline-flex; align-items: center; gap: 8px; }
+        .btn-primary { background: linear-gradient(135deg, #6366f1, #4f46e5); color: white; }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 10px 20px rgba(99,102,241,0.3); }
+        .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
+        .btn-danger { background-color: #dc3545; color: white; }
+        .btn-danger:hover { background-color: #c82333; }
+        .btn-danger:disabled { background-color: #dc3545; opacity: 0.6; cursor: not-allowed; }
+        .progress-section { margin-top: 30px; padding: 30px; background: #f9fafb; border-radius: 15px; border: 1px solid #e5e7eb; }
+        .progress-bar-container { height: 30px; background: #e5e7eb; border-radius: 15px; overflow: hidden; margin: 20px 0; }
+        .progress-bar { height: 100%; background: linear-gradient(90deg, #6366f1, #8b5cf6); transition: width 0.3s; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600;}
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin: 20px 0; }
+        .stat-card { padding: 20px; background: white; border-radius: 10px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .stat-card h3 { font-size: 32px; color: #6366f1; margin-bottom: 5px; }
+        .log-container { max-height: 200px; overflow-y: auto; background: #1f2937; color: #10b981; padding: 15px; border-radius: 8px; font-family: monospace; font-size: 14px; margin-top: 15px; }
+        .output-section { margin-top: 30px; padding: 30px; background: #f9fafb; border-radius: 15px; border: 1px solid #e5e7eb; }
+        .output-preview { margin-top: 15px; padding: 15px; background: white; border: 1px solid #e5e7eb; border-radius: 8px; max-height: 300px; overflow-y: auto; white-space: pre-wrap; }
+        .advanced-toggle { margin: 20px 0; padding: 15px; background: #f3f4f6; border-radius: 8px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+        .advanced-settings { margin-top: 15px; padding: 20px; background: #fafafa; border-radius: 8px; border: 1px solid #e5e7eb; }
+        .hidden { display: none !important; }
+        .message { padding: 15px; border-radius: 8px; margin: 15px 0; }
+        .error { background: #fee; border: 1px solid #fcc; color: #c00; }
+        .success { background: #efe; border: 1px solid #cfc; color: #060; }
+        .info { background: #e6f3ff; border: 1px solid #b3d9ff; color: #0066cc; }
     </style>
 </head>
 <body>
@@ -275,7 +65,7 @@
             <div class="card-body">
                 <div class="config-grid">
                     <div class="form-group">
-                        <label>API Endpoint</label>
+                        <label>Ollama API Endpoint</label>
                         <input type="text" class="form-control" id="apiEndpoint" value="http://localhost:11434/api/generate">
                     </div>
 
@@ -285,32 +75,38 @@
                             <select class="form-control" id="model" style="flex: 1;">
                                 <option value="">Loading models...</option>
                             </select>
-                            <button class="btn btn-secondary" onclick="loadAvailableModels()" title="Refresh model list">
-                                🔄
-                            </button>
+                            <button class="btn btn-secondary" onclick="loadAvailableModels()" title="Refresh model list">🔄</button>
                         </div>
                     </div>
 
                     <div class="form-group">
                         <label>Source Language</label>
-                        <select class="form-control" id="sourceLang">
+                        <select class="form-control" id="sourceLang" onchange="checkCustomSourceLanguage(this)">
                             <option value="English">English</option>
                             <option value="French">French</option>
                             <option value="Spanish">Spanish</option>
                             <option value="German">German</option>
                             <option value="Italian">Italian</option>
+                            <option value="Other">Other (Specify)</option>
                         </select>
+                        <input type="text" class="form-control" id="customSourceLang" placeholder="Enter custom source language" style="margin-top: 10px; display: none;">
                     </div>
 
                     <div class="form-group">
                         <label>Target Language</label>
-                        <select class="form-control" id="targetLang">
+                        <select class="form-control" id="targetLang" onchange="checkCustomTargetLanguage(this)">
                             <option value="French">French</option>
                             <option value="English">English</option>
                             <option value="Spanish">Spanish</option>
                             <option value="German">German</option>
                             <option value="Italian">Italian</option>
+                            <option value="Other">Other (Specify)</option>
                         </select>
+                        <input type="text" class="form-control" id="customTargetLang" placeholder="Enter custom target language (e.g., Portuguese)" style="margin-top: 10px; display: none;">
+                    </div>
+                     <div class="form-group">
+                        <label>Output Filename</label>
+                        <input type="text" class="form-control" id="outputFilename" value="translated_output.txt">
                     </div>
                 </div>
 
@@ -323,71 +119,60 @@
                     <div class="config-grid">
                         <div class="form-group">
                             <label>Chunk Size (lines)</label>
-                            <input type="number" class="form-control" id="chunkSize" value="25" min="10" max="100">
+                            <input type="number" class="form-control" id="chunkSize" value="25" min="5" max="200">
                         </div>
-
                         <div class="form-group">
-                            <label>Timeout (seconds)</label>
+                            <label>Request Timeout (sec)</label>
                             <input type="number" class="form-control" id="timeout" value="180" min="30" max="600">
                         </div>
-
                         <div class="form-group">
-                            <label>Context Window</label>
+                            <label>Context Window (tokens)</label>
                             <input type="number" class="form-control" id="contextWindow" value="4096" min="1024" max="32768">
                         </div>
-
                         <div class="form-group">
-                            <label>Max Attempts</label>
+                            <label>Max Retries per Chunk</label>
                             <input type="number" class="form-control" id="maxAttempts" value="2" min="1" max="5">
+                        </div>
+                         <div class="form-group">
+                            <label>Retry Delay (sec)</label>
+                            <input type="number" class="form-control" id="retryDelay" value="2" min="1" max="60">
                         </div>
                     </div>
                 </div>
 
                 <div class="file-upload" id="fileUpload" onclick="document.getElementById('fileInput').click()">
-                    <h3>📁 Drag & Drop your file here</h3>
-                    <p>or click to select a .txt file</p>
+                    <h3>📁 Drag & Drop your .txt file here</h3>
+                    <p>or click to select</p>
                     <input type="file" id="fileInput" accept=".txt" style="display: none;" onchange="handleFileSelect(event)">
                 </div>
 
                 <div id="fileInfo" class="hidden" style="margin-bottom: 20px; padding: 15px; background: #f3f4f6; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
-                    <span id="fileName"></span>
-                    <button class="btn" onclick="resetFile()">❌ Clear</button>
+                    <span id="fileNameDisplay"></span>
+                    <button class="btn" onclick="resetFile()" style="background: #e5e7eb; color: #374151;">❌ Clear</button>
                 </div>
 
                 <div id="messages"></div>
 
-                <div style="text-align: center; margin-top: 30px;">
+                <div style="text-align: center; margin-top: 30px; display: flex; justify-content: center; gap: 15px;">
                     <button class="btn btn-primary" id="translateBtn" onclick="startTranslation()" disabled>
                         ▶️ Start Translation
+                    </button>
+                    <button class="btn btn-danger hidden" id="interruptBtn" onclick="interruptTranslation()">
+                        ⏹️ Interrupt
                     </button>
                 </div>
 
                 <div id="progressSection" class="progress-section hidden">
                     <h3>📊 Translation Progress</h3>
-                    
                     <div class="progress-bar-container">
                         <div class="progress-bar" id="progressBar" style="width: 0%">0%</div>
                     </div>
-
                     <div class="stats-grid">
-                        <div class="stat-card">
-                            <h3 id="totalChunks">0</h3>
-                            <p>Total Chunks</p>
-                        </div>
-                        <div class="stat-card">
-                            <h3 id="completedChunks">0</h3>
-                            <p>Completed</p>
-                        </div>
-                        <div class="stat-card">
-                            <h3 id="failedChunks">0</h3>
-                            <p>Failed</p>
-                        </div>
-                        <div class="stat-card">
-                            <h3 id="elapsedTime">0s</h3>
-                            <p>Time Elapsed</p>
-                        </div>
+                        <div class="stat-card"><h3 id="totalChunks">0</h3><p>Total Chunks</p></div>
+                        <div class="stat-card"><h3 id="completedChunks">0</h3><p>Completed</p></div>
+                        <div class="stat-card"><h3 id="failedChunks">0</h3><p>Failed</p></div>
+                        <div class="stat-card"><h3 id="elapsedTime">0s</h3><p>Time Elapsed</p></div>
                     </div>
-
                     <h4>💻 Activity Log</h4>
                     <div class="log-container" id="logContainer"></div>
                 </div>
@@ -395,15 +180,13 @@
                 <div id="outputSection" class="output-section hidden">
                     <div style="display: flex; justify-content: space-between; align-items: center;">
                         <h3>📄 Translation Result</h3>
-                        <button class="btn btn-primary" onclick="downloadTranslation()">
-                            ⬇️ Download
+                        <button class="btn btn-primary" id="downloadBtn" onclick="downloadTranslation()" disabled>
+                            ⬇️ Download File
                         </button>
                     </div>
-                    
                     <div class="output-preview" id="outputPreview"></div>
-                    
                     <p style="margin-top: 15px; color: #6b7280; font-size: 14px;">
-                        ℹ️ Preview limited to the first 1000 characters
+                        ℹ️ Preview limited to the first 1000 characters. Full text saved to server.
                     </p>
                 </div>
             </div>
@@ -413,26 +196,22 @@
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script>
         let fileContent = '';
-        let fileName = '';
-        let translatedContent = '';
+        let originalFileName = '';
+        let translatedContentFromServer = '';
         let isTranslating = false;
-        let startTime = null;
         let currentTranslationId = null;
         
-        // API Configuration
-        const API_URL = 'http://localhost:5000';
+        const API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:5000`;
         
-        // WebSocket connection for real-time updates
-        const socket = io(API_URL);
+        const socket = io(API_BASE_URL);
         
-        socket.on('connect', () => {
-            console.log('Connected to translation server');
-            addLog('✅ Connection to server established');
+        socket.on('connect', () => { 
+            console.log('WebSocket connected to:', API_BASE_URL); 
+            addLog('✅ WebSocket connection to server established.');
         });
-        
-        socket.on('disconnect', () => {
-            console.log('Disconnected from server');
-            addLog('❌ Connection to server lost');
+        socket.on('disconnect', () => { 
+            console.log('WebSocket disconnected.'); 
+            addLog('❌ WebSocket connection lost.'); 
         });
         
         socket.on('translation_update', (data) => {
@@ -440,264 +219,310 @@
                 handleTranslationUpdate(data);
             }
         });
-        
+
+        function finishTranslationUI(statusMessage, messageType, resultData) {
+            if (resultData && resultData.result) {
+                translatedContentFromServer = resultData.result;
+                document.getElementById('outputPreview').textContent = 
+                    (translatedContentFromServer || "").substring(0, 1000) + 
+                    ((translatedContentFromServer || "").length > 1000 ? '...' : '');
+                document.getElementById('outputSection').classList.remove('hidden');
+                // Enable download if output_filename is present and status is not a hard error for saving.
+                document.getElementById('downloadBtn').disabled = !(resultData.output_filename && (resultData.status === 'completed' || resultData.status === 'interrupted'));
+            } else {
+                 document.getElementById('downloadBtn').disabled = true;
+            }
+
+            showMessage(statusMessage, messageType);
+            // Do not call addLog here if statusMessage is already a log from server.
+            // addLog(statusMessage); // Server now sends logs.
+
+            isTranslating = false;
+            document.getElementById('translateBtn').disabled = !fileContent;
+            document.getElementById('translateBtn').innerHTML = '▶️ Start Translation';
+            document.getElementById('interruptBtn').classList.add('hidden');
+            document.getElementById('interruptBtn').disabled = false;
+            document.getElementById('interruptBtn').innerHTML = '⏹️ Interrupt';
+        }
+
         function handleTranslationUpdate(data) {
-            if (data.log) {
-                addLog(data.log.replace(/^\[[^\]]+\]\s*/, ''));
-            }
-            
-            if (data.progress !== undefined) {
-                updateProgress(data.progress);
-            }
+            if (data.log) addLog(data.log); // Server logs are now distinct from status messages.
+            if (data.progress !== undefined) updateProgress(data.progress);
             
             if (data.stats) {
-                if (data.stats.total_chunks !== undefined) {
-                    document.getElementById('totalChunks').textContent = data.stats.total_chunks;
-                }
-                if (data.stats.completed_chunks !== undefined) {
-                    document.getElementById('completedChunks').textContent = data.stats.completed_chunks;
-                }
-                if (data.stats.failed_chunks !== undefined) {
-                    document.getElementById('failedChunks').textContent = data.stats.failed_chunks;
-                }
+                document.getElementById('totalChunks').textContent = data.stats.total_chunks || '0';
+                document.getElementById('completedChunks').textContent = data.stats.completed_chunks || '0';
+                document.getElementById('failedChunks').textContent = data.stats.failed_chunks || '0';
                 if (data.stats.elapsed_time !== undefined) {
                     document.getElementById('elapsedTime').textContent = data.stats.elapsed_time.toFixed(1) + 's';
                 }
             }
             
-            if (data.status === 'completed' && data.result) {
-                translatedContent = data.result;
-                document.getElementById('outputPreview').textContent = 
-                    translatedContent.substring(0, 1000) + 
-                    (translatedContent.length > 1000 ? '...' : '');
-                
-                document.getElementById('outputSection').classList.remove('hidden');
-                showMessage('✅ Translation completed successfully!', 'success');
-                
-                isTranslating = false;
-                document.getElementById('translateBtn').disabled = false;
-                document.getElementById('translateBtn').innerHTML = '▶️ Start Translation';
-            }
-            
-            if (data.error) {
-                showMessage('❌ Error: ' + data.error, 'error');
-                isTranslating = false;
-                document.getElementById('translateBtn').disabled = false;
-                document.getElementById('translateBtn').innerHTML = '▶️ Start Translation';
+            if (data.status === 'completed') {
+                finishTranslationUI('✅ Translation completed successfully!', 'success', data);
+            } else if (data.status === 'interrupted') {
+                finishTranslationUI('ℹ️ Translation interrupted. Partial result saved.', 'info', data);
+            } else if (data.status === 'error') {
+                finishTranslationUI(`❌ Error: ${data.error || 'Unknown error during translation.'}`, 'error', data);
+            } else if (data.status === 'running' && !isTranslating) {
+                 // This might happen if page was reloaded and server is still running an old task we reconnected to
+                 // Or if the initial "running" status is received.
+                 isTranslating = true; // Ensure flag is set
+                 document.getElementById('translateBtn').disabled = true;
+                 document.getElementById('translateBtn').innerHTML = '⏳ Translating...';
+                 document.getElementById('interruptBtn').classList.remove('hidden');
+                 document.getElementById('progressSection').classList.remove('hidden');
+                 showMessage('Translation in progress...', 'info');
             }
         }
         
-        // Check server connection on load
         window.addEventListener('load', async () => {
             try {
-                const response = await fetch(`${API_URL}/api/health`);
-                if (response.ok) {
-                    console.log('Translation API accessible');
-                    // Load available models
-                    loadAvailableModels();
-                } else {
-                    showMessage('⚠️ Cannot connect to translation server', 'error');
+                const response = await fetch(`${API_BASE_URL}/api/health`);
+                if (!response.ok) throw new Error('Server health check failed');
+                addLog('Server health check OK.');
+                loadAvailableModels();
+                const configResponse = await fetch(`${API_BASE_URL}/api/config`);
+                if (configResponse.ok) {
+                    const defaultConfig = await configResponse.json();
+                    document.getElementById('apiEndpoint').value = defaultConfig.api_endpoint || 'http://localhost:11434/api/generate';
+                    document.getElementById('chunkSize').value = defaultConfig.chunk_size || 25;
+                    document.getElementById('timeout').value = defaultConfig.timeout || 180;
+                    document.getElementById('contextWindow').value = defaultConfig.context_window || 4096;
+                    document.getElementById('maxAttempts').value = defaultConfig.max_attempts || 2;
+                    document.getElementById('retryDelay').value = defaultConfig.retry_delay || 2;
                 }
             } catch (error) {
-                showMessage('⚠️ Translation server unavailable. Make sure the Python server is running.', 'error');
+                showMessage(`⚠️ Server unavailable at ${API_BASE_URL}. Ensure Python server is running. ${error.message}`, 'error');
+                addLog(`❌ Failed to connect to server or load config: ${error.message}`);
             }
         });
         
         async function loadAvailableModels() {
+            const modelSelect = document.getElementById('model');
+            modelSelect.innerHTML = '<option value="">Loading models...</option>';
             try {
-                const response = await fetch(`${API_URL}/api/models`);
-                if (response.ok) {
-                    const data = await response.json();
-                    const modelSelect = document.getElementById('model');
-                    
-                    // Clear current list
-                    modelSelect.innerHTML = '';
-                    
-                    if (data.models && data.models.length > 0) {
-                        // Add available models
-                        data.models.forEach(model => {
-                            const option = document.createElement('option');
-                            option.value = model;
-                            option.textContent = model;
-                            if (model === data.default) {
-                                option.selected = true;
-                            }
-                            modelSelect.appendChild(option);
-                        });
-                        
-                        addLog(`✅ ${data.count} LLM model(s) available`);
-                        
-                        // Show a message if the default model is not in the list
-                        if (data.default && !data.models.includes(data.default)) {
-                            showMessage(`ℹ️ Default model '${data.default}' is not installed. Using '${data.models[0]}'`, 'info');
-                        }
-                    } else {
-                        // No models available
-                        showMessage('⚠️ No LLM models found. Install a model with: ollama pull mistral-small', 'error');
+                const currentApiEp = document.getElementById('apiEndpoint').value;
+                const response = await fetch(`${API_BASE_URL}/api/models?api_endpoint=${encodeURIComponent(currentApiEp)}`);
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.error || `HTTP error ${response.status}`);
+                }
+                const data = await response.json();
+                modelSelect.innerHTML = '';
+                
+                if (data.models && data.models.length > 0) {
+                    data.models.forEach(modelName => {
                         const option = document.createElement('option');
-                        option.value = '';
-                        option.textContent = 'No models available';
+                        option.value = modelName; option.textContent = modelName;
+                        if (modelName === data.default) option.selected = true;
                         modelSelect.appendChild(option);
-                        document.getElementById('translateBtn').disabled = true;
+                    });
+                    addLog(`✅ ${data.count} LLM model(s) loaded. Default: ${data.default}`);
+                    if (data.default && !data.models.includes(data.default)) {
+                        showMessage(`ℹ️ Default model '${data.default}' (from server) not found. Using '${data.models[0]}'.`, 'info');
                     }
                 } else {
-                    console.error('Error fetching models');
+                    const errorMessage = data.error || (currentApiEp.includes('localhost') || currentApiEp.includes('127.0.0.1') ? 
+                                        '⚠️ No LLM models found. Ensure Ollama is running, accessible at the specified endpoint, and models are installed (e.g., ollama pull mistral).' :
+                                        '⚠️ No LLM models found. Ensure Ollama is accessible at the specified endpoint and models are installed.');
+                    showMessage(errorMessage, 'error');
+                    modelSelect.innerHTML = '<option value="">No models available</option>';
                 }
             } catch (error) {
-                console.error('Error:', error);
-                addLog('❌ Failed to retrieve model list');
+                showMessage(`❌ Error fetching models: ${error.message}`, 'error');
+                addLog(`❌ Failed to retrieve model list: ${error.message}`);
+                modelSelect.innerHTML = '<option value="">Error loading models</option>';
             }
         }
 
-        // Handle drag & drop
-        const fileUpload = document.getElementById('fileUpload');
-        
-        fileUpload.addEventListener('dragover', (e) => {
-            e.preventDefault();
-            fileUpload.classList.add('dragging');
-        });
-
-        fileUpload.addEventListener('dragleave', () => {
-            fileUpload.classList.remove('dragging');
-        });
-
-        fileUpload.addEventListener('drop', (e) => {
-            e.preventDefault();
-            fileUpload.classList.remove('dragging');
-            
+        const fileUploadArea = document.getElementById('fileUpload');
+        fileUploadArea.addEventListener('dragover', (e) => { e.preventDefault(); fileUploadArea.classList.add('dragging'); });
+        fileUploadArea.addEventListener('dragleave', () => fileUploadArea.classList.remove('dragging'));
+        fileUploadArea.addEventListener('drop', (e) => {
+            e.preventDefault(); fileUploadArea.classList.remove('dragging');
             const file = e.dataTransfer.files[0];
-            if (file && file.type === 'text/plain') {
-                processFile(file);
-            } else {
-                showMessage('Please drop a text file (.txt)', 'error');
-            }
+            if (file && file.type === 'text/plain') processFile(file);
+            else showMessage('Please drop a .txt file.', 'error');
         });
 
         function toggleAdvanced() {
             const settings = document.getElementById('advancedSettings');
-            const icon = document.getElementById('advancedIcon');
-            
-            if (settings.classList.contains('hidden')) {
-                settings.classList.remove('hidden');
-                icon.textContent = '▲';
-            } else {
-                settings.classList.add('hidden');
-                icon.textContent = '▼';
-            }
+            document.getElementById('advancedIcon').textContent = settings.classList.toggle('hidden') ? '▼' : '▲';
+        }
+        
+        function checkCustomSourceLanguage(selectElement) {
+            const customLangInput = document.getElementById('customSourceLang');
+            customLangInput.style.display = (selectElement.value === 'Other') ? 'block' : 'none';
+            if (selectElement.value === 'Other') customLangInput.focus();
+        }
+
+        function checkCustomTargetLanguage(selectElement) { // Renamed for clarity
+            const customLangInput = document.getElementById('customTargetLang');
+            customLangInput.style.display = (selectElement.value === 'Other') ? 'block' : 'none';
+            if (selectElement.value === 'Other') customLangInput.focus();
         }
 
         function handleFileSelect(e) {
             const file = e.target.files[0];
-            if (file && file.type === 'text/plain') {
-                processFile(file);
-            } else {
-                showMessage('Please select a text file (.txt)', 'error');
-            }
+            if (file && file.type === 'text/plain') processFile(file);
+            else showMessage('Please select a .txt file.', 'error');
         }
 
         function processFile(file) {
-            fileName = file.name;
+            originalFileName = file.name;
             const reader = new FileReader();
-            
             reader.onload = (e) => {
                 fileContent = e.target.result;
-                document.getElementById('fileName').textContent = `📄 ${fileName} (${(file.size / 1024).toFixed(2)} KB)`;
+                document.getElementById('fileNameDisplay').textContent = `📄 ${originalFileName} (${(file.size / 1024).toFixed(2)} KB)`;
                 document.getElementById('fileInfo').classList.remove('hidden');
-                document.getElementById('fileInfo').style.display = 'flex';
                 document.getElementById('translateBtn').disabled = false;
-                addLog(`File loaded: ${fileName}`);
+                document.getElementById('outputFilename').value = `translated_${originalFileName.replace(/\.[^/.]+$/, "")}.txt`;
+                addLog(`File loaded: ${originalFileName}`);
+                showMessage('File loaded. Ready to translate.', 'success');
             };
-            
             reader.readAsText(file);
         }
 
         function resetFile() {
-            fileContent = '';
-            fileName = '';
+            fileContent = ''; originalFileName = ''; currentTranslationId = null;
             document.getElementById('fileInput').value = '';
             document.getElementById('fileInfo').classList.add('hidden');
+            document.getElementById('fileNameDisplay').textContent = '';
             document.getElementById('translateBtn').disabled = true;
             document.getElementById('progressSection').classList.add('hidden');
             document.getElementById('outputSection').classList.add('hidden');
             document.getElementById('logContainer').innerHTML = '';
+            document.getElementById('interruptBtn').classList.add('hidden');
+            document.getElementById('customSourceLang').style.display = 'none'; // Hide custom fields
+            document.getElementById('customTargetLang').style.display = 'none';
+            document.getElementById('sourceLang').selectedIndex = 0; // Reset dropdowns
+            document.getElementById('targetLang').selectedIndex = 0;
+            updateProgress(0);
             showMessage('', '');
+            addLog("Form reset.");
         }
 
         function showMessage(text, type) {
             const messagesDiv = document.getElementById('messages');
-            if (text) {
-                messagesDiv.innerHTML = `<div class="message ${type}">${text}</div>`;
-            } else {
-                messagesDiv.innerHTML = '';
-            }
+            messagesDiv.innerHTML = text ? `<div class="message ${type}">${text}</div>` : '';
         }
 
         function addLog(message) {
-            const timestamp = new Date().toLocaleTimeString();
             const logContainer = document.getElementById('logContainer');
-            logContainer.innerHTML += `[${timestamp}] ${message}\n`;
+            logContainer.innerHTML += `[${new Date().toLocaleTimeString()}] ${message}\n`;
             logContainer.scrollTop = logContainer.scrollHeight;
         }
 
+        function earlyValidationFail(message) {
+            showMessage(message, 'error');
+            isTranslating = false;
+            document.getElementById('translateBtn').disabled = !fileContent;
+            document.getElementById('translateBtn').innerHTML = '▶️ Start Translation';
+            document.getElementById('interruptBtn').classList.add('hidden');
+            return false; // To indicate failure
+        }
+
         async function startTranslation() {
-            if (isTranslating) return;
-            
+            if (isTranslating || !fileContent) return;
+
             isTranslating = true;
-            startTime = Date.now();
-            translatedContent = '';
+            currentTranslationId = null;
+            translatedContentFromServer = '';
             
-            // Get parameters
+            showMessage('', ''); // Clear previous messages
+            document.getElementById('logContainer').innerHTML = ''; // FIX: Clear log container correctly
+
+            let sourceLanguageVal = document.getElementById('sourceLang').value;
+            if (sourceLanguageVal === 'Other') {
+                sourceLanguageVal = document.getElementById('customSourceLang').value.trim();
+                if (!sourceLanguageVal) return earlyValidationFail('Please specify the custom source language.');
+            }
+            
+            let targetLanguageVal = document.getElementById('targetLang').value;
+            if (targetLanguageVal === 'Other') {
+                targetLanguageVal = document.getElementById('customTargetLang').value.trim();
+                if (!targetLanguageVal) return earlyValidationFail('Please specify the custom target language.');
+            }
+            
+            const outputFilename = document.getElementById('outputFilename').value.trim();
+            if (!outputFilename) return earlyValidationFail('Output filename cannot be empty.');
+
+            const selectedModel = document.getElementById('model').value;
+            if (!selectedModel) return earlyValidationFail('Please select an LLM model.');
+
+            const ollamaApiEndpoint = document.getElementById('apiEndpoint').value.trim();
+            if (!ollamaApiEndpoint) return earlyValidationFail('Ollama API Endpoint cannot be empty.');
+
             const config = {
                 text: fileContent,
-                source_language: document.getElementById('sourceLang').value,
-                target_language: document.getElementById('targetLang').value,
-                model: document.getElementById('model').value,
+                source_language: sourceLanguageVal,
+                target_language: targetLanguageVal,
+                model: selectedModel,
+                api_endpoint: ollamaApiEndpoint,
                 chunk_size: parseInt(document.getElementById('chunkSize').value),
-                api_endpoint: document.getElementById('apiEndpoint').value,
                 timeout: parseInt(document.getElementById('timeout').value),
                 context_window: parseInt(document.getElementById('contextWindow').value),
                 max_attempts: parseInt(document.getElementById('maxAttempts').value),
-                retry_delay: 2
+                retry_delay: parseInt(document.getElementById('retryDelay').value),
+                output_filename: outputFilename
             };
             
-            // UI
             document.getElementById('translateBtn').disabled = true;
             document.getElementById('translateBtn').innerHTML = '⏳ Translating...';
+            document.getElementById('interruptBtn').classList.remove('hidden');
+            document.getElementById('interruptBtn').disabled = false;
+            document.getElementById('interruptBtn').innerHTML = '⏹️ Interrupt';
             document.getElementById('progressSection').classList.remove('hidden');
             document.getElementById('outputSection').classList.add('hidden');
-            document.getElementById('logContainer').innerHTML = '';
-            showMessage('', '');
-            
-            // Reset stats
-            document.getElementById('totalChunks').textContent = '0';
-            document.getElementById('completedChunks').textContent = '0';
-            document.getElementById('failedChunks').textContent = '0';
+            updateProgress(0);
+            ['totalChunks', 'completedChunks', 'failedChunks'].forEach(id => document.getElementById(id).textContent = '0');
             document.getElementById('elapsedTime').textContent = '0s';
             
+            showMessage('Initiating translation with server...', 'info');
+            addLog("🚀 Translation process initiated by user.");
+
             try {
-                // Start translation via API
-                const response = await fetch(`${API_URL}/api/translate`, {
+                const response = await fetch(`${API_BASE_URL}/api/translate`, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(config)
                 });
-                
                 if (!response.ok) {
-                    throw new Error('Error initiating translation');
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `Server error ${response.status} while initiating translation.`);
                 }
-                
                 const data = await response.json();
                 currentTranslationId = data.translation_id;
-                
-                addLog(`📋 Translation ID: ${currentTranslationId}`);
-                
+                // Backend will now send first log via WebSocket after picking up task
+                // addLog(`📋 Translation started with ID: ${currentTranslationId}. Config: ${JSON.stringify(data.config_received, null, 2)}`);
             } catch (error) {
-                showMessage('❌ Error: ' + error.message, 'error');
-                isTranslating = false;
-                document.getElementById('translateBtn').disabled = false;
-                document.getElementById('translateBtn').innerHTML = '▶️ Start Translation';
+                finishTranslationUI(`❌ Error initiating translation: ${error.message}`, 'error', null);
+            }
+        }
+        
+        async function interruptTranslation() {
+            if (!isTranslating || !currentTranslationId) {
+                showMessage('No active translation to interrupt.', 'info');
+                return;
+            }
+            document.getElementById('interruptBtn').disabled = true;
+            document.getElementById('interruptBtn').innerHTML = '⏳ Interrupting...';
+            addLog('🛑 User requested interruption...');
+            try {
+                const response = await fetch(`${API_BASE_URL}/api/translation/${currentTranslationId}/interrupt`, { method: 'POST' });
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.message || `Failed to send interrupt signal.`);
+                }
+                // Message will be updated via WebSocket by server
+                // showMessage('ℹ️ Interruption request sent. Finishing current chunk and saving...', 'info');
+            } catch (error) {
+                showMessage(`❌ Error sending interruption: ${error.message}`, 'error');
+                if (isTranslating && currentTranslationId) { // Only re-enable if still in a translating state
+                     document.getElementById('interruptBtn').disabled = false;
+                     document.getElementById('interruptBtn').innerHTML = '⏹️ Interrupt';
+                }
             }
         }
 
@@ -707,24 +532,13 @@
             progressBar.textContent = Math.round(percent) + '%';
         }
 
-        function updateElapsedTime() {
-            if (startTime) {
-                const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-                document.getElementById('elapsedTime').textContent = elapsed + 's';
-            }
-        }
-
         function downloadTranslation() {
-            const blob = new Blob([translatedContent], { type: 'text/plain' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `translated_${fileName}`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
-            addLog('Translated file downloaded');
+            if (!currentTranslationId) {
+                showMessage('No translation ID available for download.', 'error'); return;
+            }
+            const downloadUrl = `${API_BASE_URL}/api/download/${currentTranslationId}`;
+            addLog(`Initiating download from: ${downloadUrl}`);
+            window.location.href = downloadUrl;
         }
     </script>
 </body>
