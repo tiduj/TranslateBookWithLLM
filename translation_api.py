@@ -129,11 +129,11 @@ def start_translation_request():
         'context_window': int(data.get('context_window', OLLAMA_NUM_CTX)),
         'max_attempts': int(data.get('max_attempts', 2)),
         'retry_delay': int(data.get('retry_delay', 2)),
-        'output_filename': data['output_filename'] # Now required
+        'output_filename': data['output_filename']
     }
 
     active_translations[translation_id] = {
-        'status': 'queued', # Initial status before thread picks it up
+        'status': 'queued',
         'progress': 0,
         'stats': { 'start_time': time.time(), 'total_chunks': 0, 'completed_chunks': 0, 'failed_chunks': 0 },
         'logs': [f"[{datetime.now().strftime('%H:%M:%S')}] Translation {translation_id} queued."],
@@ -167,7 +167,6 @@ def run_translation_async_wrapper(translation_id, config):
         if translation_id in active_translations:
             active_translations[translation_id]['status'] = 'error'
             active_translations[translation_id]['error'] = error_msg
-            # Ensure logs list exists before appending
             if 'logs' not in active_translations[translation_id]:
                 active_translations[translation_id]['logs'] = []
             active_translations[translation_id]['logs'].append(f"[{datetime.now().strftime('%H:%M:%S')}] CRITICAL WRAPPER ERROR: {error_msg}")
@@ -176,7 +175,6 @@ def run_translation_async_wrapper(translation_id, config):
         loop.close()
 
 async def perform_actual_translation(translation_id, config):
-    # Ensure the job entry exists; it should have been created in start_translation_request
     if translation_id not in active_translations:
         print(f"Critical error: {translation_id} not found in active_translations at the start of perform_actual_translation.")
         return
@@ -184,18 +182,15 @@ async def perform_actual_translation(translation_id, config):
     active_translations[translation_id]['status'] = 'running'
     emit_update(translation_id, {'status': 'running', 'log': 'Translation task started by worker.'})
 
-    def log_message(message_key, message_content=""): # message_key can be specific like 'chunk_progress'
+    def log_message(message_key, message_content=""):
         timestamp = datetime.now().strftime('%H:%M:%S')
         full_log_entry = f"[{timestamp}] {message_content}"
 
-        # Ensure logs list exists
         if 'logs' not in active_translations[translation_id]:
             active_translations[translation_id]['logs'] = []
         active_translations[translation_id]['logs'].append(full_log_entry)
 
-        # Emit only the content for cleaner UI logs
         emit_update(translation_id, {'log': message_content})
-
 
     def update_translation_progress(progress_percent):
         if translation_id in active_translations:
@@ -204,7 +199,7 @@ async def perform_actual_translation(translation_id, config):
 
     def update_translation_stats(new_stats):
         if translation_id in active_translations:
-            if 'stats' not in active_translations[translation_id]: # Should not happen if initialized correctly
+            if 'stats' not in active_translations[translation_id]:
                  active_translations[translation_id]['stats'] = {}
             active_translations[translation_id]['stats'].update(new_stats)
             emit_update(translation_id, {'stats': active_translations[translation_id]['stats']})
@@ -218,7 +213,7 @@ async def perform_actual_translation(translation_id, config):
 
         structured_chunks = split_text_into_chunks_with_context(config['text'], config['chunk_size'])
         total_chunks = len(structured_chunks)
-        # Initialize stats properly
+
         current_stats = active_translations[translation_id].get('stats', {})
         current_stats.update({'total_chunks': total_chunks, 'completed_chunks': 0, 'failed_chunks': 0})
         update_translation_stats(current_stats)
@@ -235,7 +230,7 @@ async def perform_actual_translation(translation_id, config):
             active_translations[translation_id]['result'] = ""
             update_translation_progress(100)
             emit_update(translation_id, {'status': 'completed', 'result': "", 'output_filename': config['output_filename']})
-            # Attempt to create an empty output file
+
             try:
                 empty_filepath = os.path.join(OUTPUT_DIR, config['output_filename'])
                 with open(empty_filepath, 'w', encoding='utf-8') as f:
@@ -261,8 +256,8 @@ async def perform_actual_translation(translation_id, config):
             if not main_content.strip():
                 log_message("chunk_skip", f"⏭️ Chunk {chunk_num}/{total_chunks}: Empty, skipped.")
                 full_translation_parts.append("")
-                current_stats = active_translations[translation_id]['stats'] # Get latest stats
-                current_stats['completed_chunks'] = current_stats.get('completed_chunks', 0) + 1 # Count skipped as completed for progress
+                current_stats = active_translations[translation_id]['stats'] 
+                current_stats['completed_chunks'] = current_stats.get('completed_chunks', 0) + 1
                 update_translation_stats(current_stats)
                 continue
 
@@ -282,7 +277,7 @@ async def perform_actual_translation(translation_id, config):
                     config['model'], api_endpoint_param=config['llm_api_endpoint']
                 )
 
-            current_stats = active_translations[translation_id]['stats'] # Get latest stats again
+            current_stats = active_translations[translation_id]['stats']
             if translated_chunk_text is not None:
                 full_translation_parts.append(translated_chunk_text)
                 last_successful_translation_context = translated_chunk_text
@@ -311,15 +306,15 @@ async def perform_actual_translation(translation_id, config):
             save_error_msg = f"❌ Error saving file '{output_filepath_on_server}': {str(e)}"
             log_message("save_fail", save_error_msg)
             active_translations[translation_id]['output_filepath'] = None
-            active_translations[translation_id]['status'] = 'error' # Mark as error if saving failed
+            active_translations[translation_id]['status'] = 'error'
             active_translations[translation_id]['error'] = active_translations[translation_id].get('error', '') + f"; Save failed: {str(e)}"
 
         # --- Finalizing status ---
-        elapsed_time = time.time() - active_translations[translation_id]['stats'].get('start_time', time.time()) # Robust access
+        elapsed_time = time.time() - active_translations[translation_id]['stats'].get('start_time', time.time())
         update_translation_stats({'elapsed_time': elapsed_time})
 
         final_status_payload = {'result': final_translation_result, 'output_filename': config['output_filename']}
-        current_job_status = active_translations[translation_id].get('status', 'unknown') # Get current status
+        current_job_status = active_translations[translation_id].get('status', 'unknown')
 
         if active_translations[translation_id].get('interrupted', False):
             active_translations[translation_id]['status'] = 'interrupted'
@@ -342,11 +337,11 @@ async def perform_actual_translation(translation_id, config):
 
     except Exception as e:
         critical_error_msg = f"Critical error during translation ({translation_id}): {str(e)}"
-        log_message("critical_error_perform", critical_error_msg) # Use log_message
-        if translation_id in active_translations: # Check again, belt and braces
+        log_message("critical_error_perform", critical_error_msg)
+        if translation_id in active_translations:
             active_translations[translation_id]['status'] = 'error'
             active_translations[translation_id]['error'] = critical_error_msg
-            if full_translation_parts: # Try to save partial on critical failure
+            if full_translation_parts:
                 partial_result_on_crit_error = "\n".join(full_translation_parts)
                 active_translations[translation_id]['result'] = partial_result_on_crit_error
                 crit_err_filename = f"CRITICAL_ERROR_{config.get('output_filename', translation_id + '.txt')}"
@@ -406,7 +401,7 @@ def interrupt_translation_job(translation_id):
     if translation_id not in active_translations:
         return jsonify({"error": "Translation not found"}), 404
     job = active_translations[translation_id]
-    if job.get('status') == 'running' or job.get('status') == 'queued': # Can interrupt if queued too
+    if job.get('status') == 'running' or job.get('status') == 'queued':
         job['interrupted'] = True
         emit_update(translation_id, {'log': '🛑 Interruption signal received by the server.'})
         return jsonify({"message": "Interruption signal sent and being processed."}), 200

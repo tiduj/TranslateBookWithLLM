@@ -17,7 +17,6 @@ SENTENCE_TERMINATORS = tuple(list(".!?") + ['."', '?"', '!"', '.”', ".'", "?'"
 MAX_TRANSLATION_ATTEMPTS = 2  # Max number of retries for a failing chunk
 RETRY_DELAY_SECONDS = 2  # Seconds to wait before retrying a failed chunk
 
-
 def get_adjusted_start_index(all_lines, intended_start_idx, max_look_back_lines=20):
     if intended_start_idx == 0:
         return 0
@@ -118,9 +117,9 @@ def split_text_into_chunks_with_context(text, main_lines_per_chunk_target):
 
 async def generate_translation_request(main_content, context_before, context_after, previous_translation_context,
                                      source_language="English", target_language="French", model=DEFAULT_MODEL,
-                                     api_endpoint_param=API_ENDPOINT): # Modified: Added api_endpoint_param
+                                     api_endpoint_param=API_ENDPOINT):
     full_raw_response = ""
-    source_lang = source_language.upper() # For the tags
+    source_lang = source_language.upper()
 
     previous_translation_block_text = ""
     if previous_translation_context and previous_translation_context.strip():
@@ -163,7 +162,6 @@ async def generate_translation_request(main_content, context_before, context_aft
     }
 
     try:
-        # Modified: Use api_endpoint_param instead of global API_ENDPOINT
         response = requests.post(api_endpoint_param, json=payload, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
         json_response = response.json()
@@ -191,7 +189,7 @@ async def generate_translation_request(main_content, context_before, context_aft
 async def translate_text_file(input_filepath, output_filepath,
                               source_language="English", target_language="French",
                               model_name=DEFAULT_MODEL, chunk_target_size=MAIN_LINES_PER_CHUNK,
-                              cli_api_endpoint=API_ENDPOINT): # Added cli_api_endpoint for standalone use
+                              cli_api_endpoint=API_ENDPOINT):
     if not os.path.exists(input_filepath):
         print(f"Error: Input file '{input_filepath}' not found.")
         return
@@ -257,7 +255,7 @@ async def translate_text_file(input_filepath, output_filepath,
                 source_language,
                 target_language,
                 model_name,
-                api_endpoint_param=cli_api_endpoint # Pass endpoint for CLI use
+                api_endpoint_param=cli_api_endpoint
             )
 
         if translated_chunk_text is not None:
@@ -290,12 +288,11 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # ... (rest of the __main__ block)
     cli_api_endpoint_to_use = args.api_endpoint
 
     print(f"Starting translation from '{args.input}' ({args.source_lang}) to '{args.output}' ({args.target_lang}) using model {args.model}.")
     print(f"Main content target per chunk: {args.chunksize} lines.")
-    print(f"Using API Endpoint: {cli_api_endpoint_to_use}") # Print the endpoint being used by CLI
+    print(f"Using API Endpoint: {cli_api_endpoint_to_use}")
 
     asyncio.run(translate_text_file(
         args.input,
@@ -304,5 +301,5 @@ if __name__ == "__main__":
         args.target_lang,
         args.model,
         chunk_target_size=args.chunksize,
-        cli_api_endpoint=cli_api_endpoint_to_use # Pass to the function
+        cli_api_endpoint=cli_api_endpoint_to_use
     ))

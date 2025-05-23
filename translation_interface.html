@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Translating Books With LLMs</title>
     <style>
-        /* ... (Styles CSS inchangés) ... */
+        /* ... (Styles CSS) ... */
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -213,12 +213,11 @@
 
     <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
     <script>
-        // MODIFIED: Variables to handle multiple files and batch processing
-        let filesToProcess = []; // Array of file objects {name, content, status, outputFilename, translationId, result}
+        let filesToProcess = [];
         let translationQueue = [];
-        let currentProcessingJob = null; // { fileRef, translationId }
+        let currentProcessingJob = null;
         let isBatchActive = false;
-        let lastCompletedJobData = null; // To store data for the download button
+        let lastCompletedJobData = null;
 
         const API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:5000`;
         const socket = io(API_BASE_URL);
@@ -239,7 +238,6 @@
             if (currentProcessingJob && data.translation_id === currentProcessingJob.translationId) {
                 handleTranslationUpdate(data);
             } else {
-                // Log for other updates if necessary, or ignore if not relevant to current UI focus
                 console.log("Received update for a different/old job:", data.translation_id);
             }
         });
@@ -260,20 +258,20 @@
             if (!currentProcessingJob) return;
 
             const currentFile = currentProcessingJob.fileRef;
-            currentFile.status = resultData.status || 'unknown_error'; // Update status in main list
-            currentFile.result = resultData.result; // Store result with file object
+            currentFile.status = resultData.status || 'unknown_error';
+            currentFile.result = resultData.result;
 
             if (resultData && resultData.result) {
-                translatedContentFromServer = resultData.result; // Used by existing preview logic
+                translatedContentFromServer = resultData.result;
                 document.getElementById('outputPreview').textContent = 
                     (translatedContentFromServer || "").substring(0, 1000) + 
                     ((translatedContentFromServer || "").length > 1000 ? '...' : '');
                 document.getElementById('outputSection').classList.remove('hidden');
                 document.getElementById('outputTitle').textContent = `📄 Translation Result for ${currentFile.name}`;
                 
-                lastCompletedJobData = { // Store for potential download
+                lastCompletedJobData = {
                     translationId: currentProcessingJob.translationId,
-                    outputFilename: currentFile.outputFilename, // Use the determined output filename
+                    outputFilename: currentFile.outputFilename,
                     status: resultData.status
                 };
                 document.getElementById('downloadBtn').disabled = !(lastCompletedJobData.outputFilename && (lastCompletedJobData.status === 'completed' || lastCompletedJobData.status === 'interrupted'));
@@ -282,14 +280,10 @@
                  document.getElementById('downloadBtn').disabled = true;
             }
 
-            showMessage(statusMessage, messageType); // Show message for the current file
+            showMessage(statusMessage, messageType);
             updateFileStatusInList(currentFile.name, resultData.status === 'completed' ? 'Completed' : (resultData.status === 'interrupted' ? 'Interrupted' : 'Error'));
-
-            // Reset UI elements for *current file's* translation, ready for next or completion
-            // document.getElementById('interruptBtn').classList.add('hidden'); // Interrupt handled by batch logic
-
-            // Process next file in queue
-            currentProcessingJob = null; // Clear current job
+            
+            currentProcessingJob = null;
             processNextFileInQueue(); 
         }
 
@@ -348,7 +342,6 @@
         });
         
         async function loadAvailableModels() {
-            // ... (Function largely unchanged, logs still global) ...
             const modelSelect = document.getElementById('model');
             modelSelect.innerHTML = '<option value="">Loading models...</option>';
             try {
@@ -401,22 +394,21 @@
             }
         });
 
-        function toggleAdvanced() { /* ... (Unchanged) ... */ 
+        function toggleAdvanced() {
             const settings = document.getElementById('advancedSettings');
             document.getElementById('advancedIcon').textContent = settings.classList.toggle('hidden') ? '▼' : '▲';
         }
-        function checkCustomSourceLanguage(selectElement) { /* ... (Unchanged) ... */ 
+        function checkCustomSourceLanguage(selectElement) {
             const customLangInput = document.getElementById('customSourceLang');
             customLangInput.style.display = (selectElement.value === 'Other') ? 'block' : 'none';
             if (selectElement.value === 'Other') customLangInput.focus();
         }
-        function checkCustomTargetLanguage(selectElement) { /* ... (Unchanged) ... */ 
+        function checkCustomTargetLanguage(selectElement) {
             const customLangInput = document.getElementById('customTargetLang');
             customLangInput.style.display = (selectElement.value === 'Other') ? 'block' : 'none';
             if (selectElement.value === 'Other') customLangInput.focus();
         }
 
-        // MODIFIED: Handle multiple files
         function handleFileSelect(e) {
             const files = e.target.files;
             if (files.length > 0) {
@@ -426,7 +418,7 @@
                 });
                 updateFileDisplay();
             }
-             document.getElementById('fileInput').value = ''; // Reset file input to allow re-selection of same file if cleared
+             document.getElementById('fileInput').value = '';
         }
         
         function addFileToList(file) {
@@ -449,19 +441,19 @@
                     translationId: null,
                     result: null
                 });
-                updateFileDisplay(); // Update display after each file is read
+                updateFileDisplay();
             };
             reader.readAsText(file);
         }
 
         function updateFileDisplay() {
             const fileListContainer = document.getElementById('fileListContainer');
-            fileListContainer.innerHTML = ''; // Clear current list
+            fileListContainer.innerHTML = '';
 
             if (filesToProcess.length > 0) {
                 filesToProcess.forEach(file => {
                     const li = document.createElement('li');
-                    li.setAttribute('data-filename', file.name); // For easier selection later
+                    li.setAttribute('data-filename', file.name);
                     li.textContent = `${file.name} (${(file.size / 1024).toFixed(2)} KB) `;
                     const statusSpan = document.createElement('span');
                     statusSpan.className = 'file-status';
@@ -470,14 +462,13 @@
                     fileListContainer.appendChild(li);
                 });
                 document.getElementById('fileInfo').classList.remove('hidden');
-                document.getElementById('translateBtn').disabled = isBatchActive; // Disable if batch is active, enable otherwise
+                document.getElementById('translateBtn').disabled = isBatchActive;
             } else {
                 document.getElementById('fileInfo').classList.add('hidden');
                 document.getElementById('translateBtn').disabled = true;
             }
         }
 
-        // MODIFIED: Reset for multiple files
         function resetFiles() {
             filesToProcess = [];
             translationQueue = [];
@@ -485,14 +476,14 @@
             isBatchActive = false;
             lastCompletedJobData = null;
 
-            document.getElementById('fileInput').value = ''; // Clear the file input
-            updateFileDisplay(); // Will hide fileInfo and disable translateBtn
+            document.getElementById('fileInput').value = '';
+            updateFileDisplay();
 
             document.getElementById('progressSection').classList.add('hidden');
             document.getElementById('outputSection').classList.add('hidden');
             document.getElementById('logContainer').innerHTML = '';
             document.getElementById('translateBtn').innerHTML = '▶️ Start Translation Batch';
-            document.getElementById('translateBtn').disabled = true; // Should be disabled by updateFileDisplay
+            document.getElementById('translateBtn').disabled = true;
             document.getElementById('interruptBtn').classList.add('hidden');
             document.getElementById('interruptBtn').disabled = false;
             document.getElementById('interruptBtn').innerHTML = '⏹️ Interrupt Current & Stop Batch';
@@ -502,34 +493,33 @@
             document.getElementById('sourceLang').selectedIndex = 0;
             document.getElementById('targetLang').selectedIndex = 0;
             updateProgress(0);
-            showMessage('', ''); // Clear messages
+            showMessage('', '');
             addLog("Form and file list reset.");
         }
 
-        function showMessage(text, type) { /* ... (Unchanged) ... */ 
+        function showMessage(text, type) {
             const messagesDiv = document.getElementById('messages');
             messagesDiv.innerHTML = text ? `<div class="message ${type}">${text}</div>` : '';
         }
-        function addLog(message) { /* ... (Unchanged, but logs now might be prefixed) ... */ 
+        function addLog(message) {
             const logContainer = document.getElementById('logContainer');
-            logContainer.innerHTML += `[${new Date().toLocaleTimeString()}] ${message}\n`; // Consider prefixing with current file name if currentProcessingJob is set
+            logContainer.innerHTML += `[${new Date().toLocaleTimeString()}] ${message}\n`;
             logContainer.scrollTop = logContainer.scrollHeight;
         }
 
         function earlyValidationFail(message) {
             showMessage(message, 'error');
-            isBatchActive = false; // Ensure batch is not considered active
+            isBatchActive = false;
             document.getElementById('translateBtn').disabled = filesToProcess.length === 0;
             document.getElementById('translateBtn').innerHTML = '▶️ Start Translation Batch';
             document.getElementById('interruptBtn').classList.add('hidden');
             return false;
         }
 
-        // MODIFIED: Start batch translation
+        // Start batch translation
         async function startBatchTranslation() {
             if (isBatchActive || filesToProcess.length === 0) return;
 
-            // Basic validation before starting the whole batch
             let sourceLanguageVal = document.getElementById('sourceLang').value;
             if (sourceLanguageVal === 'Other') {
                 sourceLanguageVal = document.getElementById('customSourceLang').value.trim();
@@ -546,15 +536,15 @@
             if (!ollamaApiEndpoint) return earlyValidationFail('Ollama API Endpoint cannot be empty for the batch.');
 
             isBatchActive = true;
-            translationQueue = [...filesToProcess]; // Copy files to a processing queue
+            translationQueue = [...filesToProcess];
             
             document.getElementById('translateBtn').disabled = true;
             document.getElementById('translateBtn').innerHTML = '⏳ Batch in Progress...';
             document.getElementById('interruptBtn').classList.remove('hidden');
             document.getElementById('interruptBtn').disabled = false;
             
-            document.getElementById('outputSection').classList.add('hidden'); // Hide previous output
-            document.getElementById('logContainer').innerHTML = ''; // Clear logs for the new batch (or new file)
+            document.getElementById('outputSection').classList.add('hidden');
+            document.getElementById('logContainer').innerHTML = '';
 
             addLog(`🚀 Batch translation started for ${translationQueue.length} file(s).`);
             showMessage(`Batch of ${translationQueue.length} file(s) initiated.`, 'info');
@@ -567,25 +557,22 @@
 
             if (translationQueue.length === 0) {
                 isBatchActive = false;
-                document.getElementById('translateBtn').disabled = filesToProcess.length === 0; // Re-enable if new files can be added
+                document.getElementById('translateBtn').disabled = filesToProcess.length === 0;
                 document.getElementById('translateBtn').innerHTML = '▶️ Start Translation Batch';
                 document.getElementById('interruptBtn').classList.add('hidden');
                 showMessage('✅ Batch translation completed for all files!', 'success');
                 addLog('🏁 All files in the batch have been processed.');
-                // Progress section can be hidden or show "Batch complete"
-                // document.getElementById('progressSection').classList.add('hidden'); 
                 document.getElementById('currentFileProgressTitle').textContent = `📊 Batch Completed`;
                 return;
             }
 
-            const fileToTranslate = translationQueue.shift(); // Get next file from queue
+            const fileToTranslate = translationQueue.shift();
 
-            // Reset UI for the new file's progress
             updateProgress(0);
             ['totalChunks', 'completedChunks', 'failedChunks'].forEach(id => document.getElementById(id).textContent = '0');
             document.getElementById('elapsedTime').textContent = '0s';
-            document.getElementById('logContainer').innerHTML = ''; // Clear logs for the new file
-            document.getElementById('outputSection').classList.add('hidden'); // Hide previous output
+            document.getElementById('logContainer').innerHTML = '';
+            document.getElementById('outputSection').classList.add('hidden');
              document.getElementById('downloadBtn').disabled = true;
 
 
@@ -625,19 +612,18 @@
                 }
                 const data = await response.json();
                 currentProcessingJob = { fileRef: fileToTranslate, translationId: data.translation_id };
-                fileToTranslate.translationId = data.translation_id; // Store ID with the file object
+                fileToTranslate.translationId = data.translation_id;
                 updateFileStatusInList(fileToTranslate.name, 'Submitted', data.translation_id);
-                // First log/status update will come via WebSocket from server
+
             } catch (error) {
                 addLog(`❌ Error initiating translation for ${fileToTranslate.name}: ${error.message}`);
                 showMessage(`Error starting ${fileToTranslate.name}: ${error.message}`, 'error');
                 updateFileStatusInList(fileToTranslate.name, 'Initiation Error');
-                currentProcessingJob = null; // Clear job so next can start
-                processNextFileInQueue(); // Try next file
+                currentProcessingJob = null;
+                processNextFileInQueue();
             }
         }
         
-        // MODIFIED: Interrupt current file and stop the batch
         async function interruptCurrentTranslation() {
             if (!isBatchActive || !currentProcessingJob) {
                 showMessage('No active translation to interrupt.', 'info');
@@ -650,8 +636,7 @@
             document.getElementById('interruptBtn').disabled = true;
             document.getElementById('interruptBtn').innerHTML = '⏳ Interrupting...';
             addLog(`🛑 User requested interruption for ${fileToInterrupt.name} (ID: ${tidToInterrupt}). This will stop the batch.`);
-            
-            translationQueue = []; // Clear the rest of the queue
+            translationQueue = [];
 
             try {
                 const response = await fetch(`${API_BASE_URL}/api/translation/${tidToInterrupt}/interrupt`, { method: 'POST' });
@@ -659,27 +644,20 @@
                     const errData = await response.json();
                     throw new Error(errData.message || `Failed to send interrupt signal for ${fileToInterrupt.name}.`);
                 }
-                // Message will be updated via WebSocket by server for the current file.
-                // The call to processNextFileInQueue() in handleTranslationUpdate will find an empty queue.
                 showMessage(`ℹ️ Interruption for ${fileToInterrupt.name} requested. Batch will stop after this file.`, 'info');
             } catch (error) {
                 showMessage(`❌ Error sending interruption for ${fileToInterrupt.name}: ${error.message}`, 'error');
-                // Re-enable interrupt button only if we are sure the job is still somehow active
-                // For simplicity, the batch stop is already signaled by clearing the queue.
-                // The current job will eventually finish (interrupted or error) and then batch ends.
-                 document.getElementById('interruptBtn').disabled = false; // Re-enable if error, as interrupt might not have registered
+                 document.getElementById('interruptBtn').disabled = false;
                  document.getElementById('interruptBtn').innerHTML = '⏹️ Interrupt Current & Stop Batch';
-
             }
         }
 
-        function updateProgress(percent) { /* ... (Unchanged) ... */ 
+        function updateProgress(percent) {
             const progressBar = document.getElementById('progressBar');
             progressBar.style.width = percent + '%';
             progressBar.textContent = Math.round(percent) + '%';
         }
 
-        // MODIFIED: Download for the last completed file
         function downloadLastTranslation() {
             if (!lastCompletedJobData || !lastCompletedJobData.translationId) {
                 showMessage('No completed translation available for download, or ID missing.', 'error'); return;
