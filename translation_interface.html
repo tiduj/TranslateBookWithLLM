@@ -5,94 +5,81 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Translating Books With LLMs</title>
 <style>
-    /* ... (Styles CSS) ... */
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
         font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        /* Fond dégradé sombre et profond, inspiré des interfaces tech */
-        background: linear-gradient(135deg, #1A1A2E 0%, #0F0F1A 100%);
+        background-color: #D7E0DD;
         min-height: 100vh;
-        /* Couleur de texte générale pour un contraste clair */
-        color: #E0E0E0;
+        color: #E0E6E9;
         padding: 20px;
     }
     .container { max-width: 1200px; margin: 0 auto; }
     .header {
         text-align: center;
-        /* Blanc éclatant pour le titre principal */
-        color: #FFFFFF;
         margin-bottom: 40px;
     }
-    .header h1 {
-        font-size: 48px;
+    .header img {
+        max-width: 250px;
+        height: auto;
         margin-bottom: 10px;
-        /* Ombre textuelle subtile pour un effet de profondeur */
-        text-shadow: 0 0 10px rgba(0, 255, 255, 0.4);
+    }
+    .header p {
+        color: #A3ADB3;
+        font-size: 18px;
     }
     .main-card {
-        /* Fond de carte légèrement transparent ou très sombre pour un effet glassy */
-        background: rgba(25, 25, 45, 0.85);
+        background: linear-gradient(145deg, #1A1A1A, #0D0D0D);
         border-radius: 20px;
-        /* Ombre plus prononcée avec une légère lueur bleutée */
-        box-shadow: 0 20px 50px -10px rgba(0, 255, 255, 0.2);
+        box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.6);
         overflow: hidden;
-        /* Bordure subtile pour délimiter la carte */
-        border: 1px solid rgba(0, 255, 255, 0.1);
+        border: 1px solid #333333;
     }
     .card-header {
-        /* Dégradé vibrant pour l'en-tête, rappelant les interfaces technologiques */
-        background: linear-gradient(135deg, #00C9FF, #92FE9D);
-        color: #1A1A2E; /* Texte sombre pour un contraste avec le dégradé */
+        background: linear-gradient(90deg, #1E1E1E, #2A2A2A);
+        color: #79CDDE; /* Replaced accent color */
         padding: 30px;
-        /* Effet de lueur interne subtil */
-        box-shadow: inset 0 -5px 15px rgba(0, 201, 255, 0.3);
+        box-shadow: inset 0 -5px 15px rgba(0, 0, 0, 0.6);
     }
-    .card-body { padding: 30px; }
+    .card-body { padding: 30px; color: #E0E6E9; }
     .config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 30px; }
     .form-group { display: flex; flex-direction: column; }
     .form-group label {
         font-weight: 600;
         margin-bottom: 8px;
-        /* Couleur légèrement plus claire pour les labels */
-        color: #B0B0B0;
+        color: #A3ADB3;
     }
     .form-control {
         padding: 12px;
-        /* Bordure et fond sombres */
-        border: 2px solid #3A3A50;
-        background-color: #28283C;
+        border: 2px solid #333333;
+        background-color: #1A1A1A;
         border-radius: 8px;
         font-size: 16px;
-        color: #E0E0E0; /* Couleur du texte dans les champs */
+        color: #E0E6E9;
         transition: border-color 0.3s, box-shadow 0.3s;
     }
     .form-control:focus {
         outline: none;
-        /* Bordure et ombre lumineuses au focus */
-        border-color: #00C9FF;
-        box-shadow: 0 0 10px rgba(0, 201, 255, 0.5);
+        border-color: #79CDDE; /* Replaced accent color */
+        box-shadow: 0 0 10px rgba(121, 205, 222, 0.6); /* Replaced accent color */
     }
     .file-upload {
         margin: 30px 0;
         padding: 60px;
-        /* Bordure en pointillés néon */
-        border: 3px dashed #00FFCC;
+        border: 3px dashed #79CDDE; /* Replaced accent color */
         border-radius: 15px;
         text-align: center;
-        /* Fond sombre et légèrement transparent */
-        background: rgba(40, 40, 60, 0.6);
+        background: linear-gradient(135deg, #1A1A1A, #2C2C2C);
         cursor: pointer;
         transition: all 0.3s;
-        /* Texte plus clair */
-        color: #B0B0B0;
+        color: #A3ADB3;
     }
     .file-upload:hover {
-        border-color: #00C9FF;
-        background: rgba(0, 201, 255, 0.1);
+        border-color: #E0E6E9;
+        background: linear-gradient(135deg, #2C2C2C, #3A3A3A);
     }
     .file-upload.dragging {
-        border-color: #92FE9D;
-        background: rgba(146, 254, 157, 0.15);
+        border-color: #79CDDE; /* Replaced accent color */
+        background: linear-gradient(135deg, #3A3A3A, #4A4A4A);
     }
     .btn {
         padding: 12px 24px;
@@ -107,162 +94,138 @@
         gap: 8px;
     }
     .btn-primary {
-        /* Dégradé de bouton "call to action" technologique */
-        background: linear-gradient(135deg, #00C9FF, #92FE9D);
-        color: #1A1A2E; /* Texte sombre pour un contraste */
+        background: linear-gradient(90deg, #79CDDE, #44A6BC); /* Replaced accent color with a slight gradient */
+        color: #FFFFFF;
     }
     .btn-primary:hover {
         transform: translateY(-2px);
-        /* Ombre avec lueur au hover */
-        box-shadow: 0 10px 25px rgba(0, 201, 255, 0.4);
+        box-shadow: 0 10px 25px rgba(121, 205, 222, 0.4); /* Replaced accent color */
     }
     .btn-primary:disabled { opacity: 0.6; cursor: not-allowed; transform: none; }
     .btn-danger {
-        /* Rouge plus profond et moins flashy */
-        background-color: #C0392B;
-        color: white;
+        background-color: #E57373;
+        color: #FFFFFF;
     }
-    .btn-danger:hover { background-color: #A93226; }
-    .btn-danger:disabled { background-color: #C0392B; opacity: 0.6; cursor: not-allowed; }
+    .btn-danger:hover { background-color: #EF5350; }
+    .btn-danger:disabled { background-color: #E57373; opacity: 0.6; cursor: not-allowed; }
     .progress-section {
         margin-top: 30px;
         padding: 30px;
-        /* Fond légèrement plus clair que le corps pour la section */
-        background: rgba(35, 35, 55, 0.7);
+        background: linear-gradient(145deg, #1A1A1A, #0D0D0D);
         border-radius: 15px;
-        border: 1px solid #3A3A50;
-        color: #E0E0E0;
+        border: 1px solid #333333;
+        color: #E0E6E9;
     }
     .progress-bar-container {
         height: 30px;
-        background: #3A3A50;
+        background: #333333;
         border-radius: 15px;
         overflow: hidden;
         margin: 20px 0;
-        /* Ombre interne subtile */
-        box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.3);
+        box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.4);
     }
     .progress-bar {
         height: 100%;
-        /* Dégradé pour la barre de progression, style néon */
-        background: linear-gradient(90deg, #00C9FF, #00FFCC);
+        background: linear-gradient(90deg, #79CDDE, #44A6BC); /* Replaced accent color with a slight gradient */
         transition: width 0.3s;
         display: flex;
         align-items: center;
         justify-content: center;
-        color: #1A1A2E; /* Texte sombre pour la barre */
+        color: #1A1A1A;
         font-weight: 600;
-        /* Ombre interne pour un effet "rempli" */
-        box-shadow: inset 0 0 8px rgba(0, 255, 204, 0.6);
+        box-shadow: inset 0 0 8px rgba(0, 0, 0, 0.5);
     }
     .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 15px; margin: 20px 0; }
     .stat-card {
         padding: 20px;
-        /* Fond de carte statistique sombre */
-        background: #28283C;
+        background: linear-gradient(145deg, #1A1A1A, #2C2C2C);
         border-radius: 10px;
         text-align: center;
-        /* Ombre douce */
-        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
-        /* Bordure fine pour la délimitation */
-        border: 1px solid #3A3A50;
-        color: #E0E0E0;
+        box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        border: 1px solid #333333;
+        color: #E0E6E9;
     }
     .stat-card h3 {
         font-size: 32px;
-        /* Couleur des chiffres clés */
-        color: #00C9FF;
+        color: #79CDDE; /* Replaced accent color */
         margin-bottom: 5px;
-        /* Légère ombre textuelle pour la clarté */
-        text-shadow: 0 0 5px rgba(0, 201, 255, 0.5);
+        text-shadow: 0 0 8px rgba(121, 205, 222, 0.7); /* Replaced accent color */
     }
     .log-container {
         max-height: 200px;
         overflow-y: auto;
-        /* Fond très sombre pour les logs, texte vert pour l'effet console */
-        background: #000000;
-        color: #00FF00; /* Vert néon pour les logs */
+        background: #1A1A1A;
+        color: #E0E6E9;
         padding: 15px;
         border-radius: 8px;
-        font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace; /* Police monospace */
+        font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
         font-size: 14px;
         margin-top: 15px;
-        /* Bordure lumineuse pour le conteneur de logs */
-        border: 1px solid rgba(0, 255, 0, 0.3);
+        border: 1px solid #333333;
     }
     .output-section {
         margin-top: 30px;
         padding: 30px;
-        /* Fond de section de sortie */
-        background: rgba(35, 35, 55, 0.7);
+        background: linear-gradient(145deg, #1A1A1A, #0D0D0D);
         border-radius: 15px;
-        border: 1px solid #3A3A50;
-        color: #E0E0E0;
+        border: 1px solid #333333;
+        color: #E0E6E9;
     }
     .output-preview {
         margin-top: 15px;
         padding: 15px;
-        /* Fond de prévisualisation sombre */
-        background: #28283C;
-        border: 1px solid #3A3A50;
+        background: #1A1A1A;
+        border: 1px solid #333333;
         border-radius: 8px;
         max-height: 300px;
         overflow-y: auto;
         white-space: pre-wrap;
-        color: #E0E0E0;
+        color: #E0E6E9;
         font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace;
     }
     .advanced-toggle {
         margin: 20px 0;
         padding: 15px;
-        /* Fond du toggle sombre */
-        background: #28283C;
+        background: linear-gradient(90deg, #1A1A1A, #2C2C2C);
         border-radius: 8px;
         cursor: pointer;
         display: flex;
         justify-content: space-between;
         align-items: center;
-        /* Bordure fine pour délimiter */
-        border: 1px solid #3A3A50;
-        color: #E0E0E0;
+        border: 1px solid #333333;
+        color: #A3ADB3;
         transition: background 0.3s;
     }
     .advanced-toggle:hover {
-        background: #3A3A50;
-        /* Légère lueur au hover */
-        box-shadow: 0 0 10px rgba(0, 201, 255, 0.3);
+        background: linear-gradient(90deg, #2C2C2C, #3A3A3A);
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.4);
     }
     .advanced-settings {
         margin-top: 15px;
         padding: 20px;
-        /* Fond des paramètres avancés */
-        background: #1F1F30;
+        background: #1A1A1A;
         border-radius: 8px;
-        border: 1px solid #3A3A50;
-        color: #E0E0E0;
+        border: 1px solid #333333;
+        color: #E0E6E9;
     }
     .hidden { display: none !important; }
     .message {
         padding: 15px;
         border-radius: 8px;
         margin: 15px 0;
-        /* Texte en gras pour les messages */
         font-weight: 600;
     }
     .error {
-        /* Rouge plus profond avec bordure et texte contrastants */
         background: #4A1B1B;
         border: 1px solid #8A2D2D;
         color: #FFC0C0;
     }
     .success {
-        /* Vert néon avec bordure et texte contrastants */
         background: #1B4A1B;
         border: 1px solid #2D8A2D;
         color: #C0FFC0;
     }
     .info {
-        /* Bleu tech avec bordure et texte contrastants */
         background: #1B1B4A;
         border: 1px solid #2D2D8A;
         color: #C0C0FF;
@@ -271,22 +234,21 @@
         margin-top: 10px;
         max-height: 150px;
         overflow-y: auto;
-        /* Fond de liste de fichiers sombre */
-        background: #28283C;
+        background: #1A1A1A;
         padding: 10px;
         border-radius: 8px;
-        border: 1px solid #3A3A50;
-        color: #B0B0B0;
+        border: 1px solid #333333;
+        color: #A3ADB3;
     }
     #fileListContainer li {
         list-style-type: none;
         padding: 5px;
-        border-bottom: 1px solid #3A3A50; /* Bordure plus sombre pour les éléments */
+        border-bottom: 1px solid #333333;
     }
     #fileListContainer li:last-child { border-bottom: none; }
     .file-status {
         font-style: italic;
-        color: #00FFCC; /* Couleur néon pour le statut des fichiers */
+        color: #79CDDE; /* Replaced accent color */
         font-size: 0.9em;
         margin-left: 10px;
     }
@@ -295,8 +257,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🌐 Translating Books With LLMs</h1>
-            <p>Translate documents with local language models</p>
+            <img src="/static/TBL-Logo.png" alt="TBL Logo">
         </div>
 
         <div class="main-card">
@@ -439,7 +400,7 @@
                         </button>
                     </div>
                     <div class="output-preview" id="outputPreview"></div>
-                    <p style="margin-top: 15px; color: #6b7280; font-size: 14px;">
+                    <p style="margin-top: 15px; color: #ACB5B7; font-size: 14px;">
                         ℹ️ Preview limited to the first 1000 characters. Full text saved to server.
                     </p>
                 </div>
