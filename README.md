@@ -5,12 +5,7 @@ A Python application designed for large-scale text translation, such as entire b
 ## Features
 
 - 🌐 **Web Interface**: User-friendly browser-based interface with real-time progress tracking
-- 📊 **Real-time Progress**: Live updates with WebSocket connectivity
-- 🔄 **Smart Chunking**: Intelligent text splitting with sentence alignment
-- 🎯 **Context Preservation**: Maintains translation consistency across chunks
-- 🔧 **Flexible Configuration**: Customizable chunk sizes, models, and parameters
 - 💻 **CLI Support**: Command-line interface for automation and scripting
-- 🔄 **Automatic Retry**: Handles translation failures with configurable retry logic
 
 ## Quick Start (Web Interface - Recommended)
 
