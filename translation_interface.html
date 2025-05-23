@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Translator Pro</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #1f2937;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            font-size: 48px;
+            margin-bottom: 10px;
+        }
+
+        .main-card {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .card-header {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: white;
+            padding: 30px;
+        }
+
+        .card-body {
+            padding: 30px;
+        }
+
+        .config-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .form-group label {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #374151;
+        }
+
+        .form-control {
+            padding: 12px;
+            border: 2px solid #e5e7eb;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: #6366f1;
+        }
+
+        .file-upload {
+            margin: 30px 0;
+            padding: 60px;
+            border: 3px dashed #cbd5e1;
+            border-radius: 15px;
+            text-align: center;
+            background: #f9fafb;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .file-upload:hover {
+            border-color: #6366f1;
+            background: #f0f0ff;
+        }
+
+        .file-upload.dragging {
+            border-color: #6366f1;
+            background: #e0e7ff;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #6366f1, #4f46e5);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(99, 102, 241, 0.3);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .progress-section {
+            margin-top: 30px;
+            padding: 30px;
+            background: #f9fafb;
+            border-radius: 15px;
+            border: 1px solid #e5e7eb;
+        }
+
+        .progress-bar-container {
+            height: 30px;
+            background: #e5e7eb;
+            border-radius: 15px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #6366f1, #8b5cf6);
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin: 20px 0;
+        }
+
+        .stat-card {
+            padding: 20px;
+            background: white;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .stat-card h3 {
+            font-size: 32px;
+            color: #6366f1;
+            margin-bottom: 5px;
+        }
+
+        .log-container {
+            max-height: 200px;
+            overflow-y: auto;
+            background: #1f2937;
+            color: #10b981;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 14px;
+            margin-top: 15px;
+        }
+
+        .output-section {
+            margin-top: 30px;
+            padding: 30px;
+            background: #f9fafb;
+            border-radius: 15px;
+            border: 1px solid #e5e7eb;
+        }
+
+        .output-preview {
+            margin-top: 15px;
+            padding: 15px;
+            background: white;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+
+        .advanced-toggle {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f3f4f6;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .advanced-settings {
+            margin-top: 15px;
+            padding: 20px;
+            background: #fafafa;
+            border-radius: 8px;
+            border: 1px solid #e5e7eb;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .message {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+        }
+
+        .error {
+            background: #fee;
+            border: 1px solid #fcc;
+            color: #c00;
+        }
+
+        .success {
+            background: #efe;
+            border: 1px solid #cfc;
+            color: #060;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🌐 LLM Translator Pro</h1>
+            <p>Traduction de documents avec modèles de langage locaux</p>
+        </div>
+
+        <div class="main-card">
+            <div class="card-header">
+                <h2>⚙️ Configuration de la traduction</h2>
+            </div>
+
+            <div class="card-body">
+                <div class="config-grid">
+                    <div class="form-group">
+                        <label>Point d'accès API</label>
+                        <input type="text" class="form-control" id="apiEndpoint" value="http://localhost:11434/api/generate">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Modèle LLM</label>
+                        <select class="form-control" id="model">
+                            <option value="mistral-small:24b">Mistral Small 24B</option>
+                            <option value="mistral:7b">Mistral 7B</option>
+                            <option value="llama3:8b">Llama 3 8B</option>
+                            <option value="mixtral:8x7b">Mixtral 8x7B</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Langue source</label>
+                        <select class="form-control" id="sourceLang">
+                            <option value="English">Anglais</option>
+                            <option value="French">Français</option>
+                            <option value="Spanish">Espagnol</option>
+                            <option value="German">Allemand</option>
+                            <option value="Italian">Italien</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Langue cible</label>
+                        <select class="form-control" id="targetLang">
+                            <option value="French">Français</option>
+                            <option value="English">Anglais</option>
+                            <option value="Spanish">Espagnol</option>
+                            <option value="German">Allemand</option>
+                            <option value="Italian">Italien</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="advanced-toggle" onclick="toggleAdvanced()">
+                    <span>🔧 Paramètres avancés</span>
+                    <span id="advancedIcon">▼</span>
+                </div>
+
+                <div id="advancedSettings" class="advanced-settings hidden">
+                    <div class="config-grid">
+                        <div class="form-group">
+                            <label>Taille des chunks (lignes)</label>
+                            <input type="number" class="form-control" id="chunkSize" value="25" min="10" max="100">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Timeout (secondes)</label>
+                            <input type="number" class="form-control" id="timeout" value="180" min="30" max="600">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Fenêtre de contexte</label>
+                            <input type="number" class="form-control" id="contextWindow" value="4096" min="1024" max="32768">
+                        </div>
+
+                        <div class="form-group">
+                            <label>Tentatives max</label>
+                            <input type="number" class="form-control" id="maxAttempts" value="2" min="1" max="5">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="file-upload" id="fileUpload" onclick="document.getElementById('fileInput').click()">
+                    <h3>📁 Glissez-déposez votre fichier ici</h3>
+                    <p>ou cliquez pour sélectionner un fichier .txt</p>
+                    <input type="file" id="fileInput" accept=".txt" style="display: none;" onchange="handleFileSelect(event)">
+                </div>
+
+                <div id="fileInfo" class="hidden" style="margin-bottom: 20px; padding: 15px; background: #f3f4f6; border-radius: 8px; display: flex; justify-content: space-between; align-items: center;">
+                    <span id="fileName"></span>
+                    <button class="btn" onclick="resetFile()">❌ Supprimer</button>
+                </div>
+
+                <div id="messages"></div>
+
+                <div style="text-align: center; margin-top: 30px;">
+                    <button class="btn btn-primary" id="translateBtn" onclick="startTranslation()" disabled>
+                        ▶️ Lancer la traduction
+                    </button>
+                </div>
+
+                <div id="progressSection" class="progress-section hidden">
+                    <h3>📊 Progression de la traduction</h3>
+                    
+                    <div class="progress-bar-container">
+                        <div class="progress-bar" id="progressBar" style="width: 0%">0%</div>
+                    </div>
+
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <h3 id="totalChunks">0</h3>
+                            <p>Chunks totaux</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3 id="completedChunks">0</h3>
+                            <p>Complétés</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3 id="failedChunks">0</h3>
+                            <p>Échoués</p>
+                        </div>
+                        <div class="stat-card">
+                            <h3 id="elapsedTime">0s</h3>
+                            <p>Temps écoulé</p>
+                        </div>
+                    </div>
+
+                    <h4>💻 Journal d'activité</h4>
+                    <div class="log-container" id="logContainer"></div>
+                </div>
+
+                <div id="outputSection" class="output-section hidden">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h3>📄 Résultat de la traduction</h3>
+                        <button class="btn btn-primary" onclick="downloadTranslation()">
+                            ⬇️ Télécharger
+                        </button>
+                    </div>
+                    
+                    <div class="output-preview" id="outputPreview"></div>
+                    
+                    <p style="margin-top: 15px; color: #6b7280; font-size: 14px;">
+                        ℹ️ Aperçu limité aux 1000 premiers caractères
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <script>
+        let fileContent = '';
+        let fileName = '';
+        let translatedContent = '';
+        let isTranslating = false;
+        let startTime = null;
+        let currentTranslationId = null;
+        
+        // Configuration de l'API
+        const API_URL = 'http://localhost:5000';
+        
+        // Connexion WebSocket pour les mises à jour en temps réel
+        const socket = io(API_URL);
+        
+        socket.on('connect', () => {
+            console.log('Connecté au serveur de traduction');
+            addLog('✅ Connexion au serveur établie');
+        });
+        
+        socket.on('disconnect', () => {
+            console.log('Déconnecté du serveur');
+            addLog('❌ Connexion au serveur perdue');
+        });
+        
+        socket.on('translation_update', (data) => {
+            if (data.translation_id === currentTranslationId) {
+                handleTranslationUpdate(data);
+            }
+        });
+        
+        function handleTranslationUpdate(data) {
+            if (data.log) {
+                addLog(data.log.replace(/^\[[^\]]+\]\s*/, ''));
+            }
+            
+            if (data.progress !== undefined) {
+                updateProgress(data.progress);
+            }
+            
+            if (data.stats) {
+                if (data.stats.total_chunks !== undefined) {
+                    document.getElementById('totalChunks').textContent = data.stats.total_chunks;
+                }
+                if (data.stats.completed_chunks !== undefined) {
+                    document.getElementById('completedChunks').textContent = data.stats.completed_chunks;
+                }
+                if (data.stats.failed_chunks !== undefined) {
+                    document.getElementById('failedChunks').textContent = data.stats.failed_chunks;
+                }
+                if (data.stats.elapsed_time !== undefined) {
+                    document.getElementById('elapsedTime').textContent = data.stats.elapsed_time.toFixed(1) + 's';
+                }
+            }
+            
+            if (data.status === 'completed' && data.result) {
+                translatedContent = data.result;
+                document.getElementById('outputPreview').textContent = 
+                    translatedContent.substring(0, 1000) + 
+                    (translatedContent.length > 1000 ? '...' : '');
+                
+                document.getElementById('outputSection').classList.remove('hidden');
+                showMessage('✅ Traduction terminée avec succès !', 'success');
+                
+                isTranslating = false;
+                document.getElementById('translateBtn').disabled = false;
+                document.getElementById('translateBtn').innerHTML = '▶️ Lancer la traduction';
+            }
+            
+            if (data.error) {
+                showMessage('❌ Erreur: ' + data.error, 'error');
+                isTranslating = false;
+                document.getElementById('translateBtn').disabled = false;
+                document.getElementById('translateBtn').innerHTML = '▶️ Lancer la traduction';
+            }
+        }
+        
+        // Vérifier la connexion au serveur au chargement
+        window.addEventListener('load', async () => {
+            try {
+                const response = await fetch(`${API_URL}/api/health`);
+                if (response.ok) {
+                    console.log('API de traduction accessible');
+                } else {
+                    showMessage('⚠️ Impossible de se connecter au serveur de traduction', 'error');
+                }
+            } catch (error) {
+                showMessage('⚠️ Serveur de traduction non disponible. Assurez-vous que le serveur Python est lancé.', 'error');
+            }
+        });
+
+        // Gestion du drag & drop
+        const fileUpload = document.getElementById('fileUpload');
+        
+        fileUpload.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            fileUpload.classList.add('dragging');
+        });
+
+        fileUpload.addEventListener('dragleave', () => {
+            fileUpload.classList.remove('dragging');
+        });
+
+        fileUpload.addEventListener('drop', (e) => {
+            e.preventDefault();
+            fileUpload.classList.remove('dragging');
+            
+            const file = e.dataTransfer.files[0];
+            if (file && file.type === 'text/plain') {
+                processFile(file);
+            } else {
+                showMessage('Veuillez déposer un fichier texte (.txt)', 'error');
+            }
+        });
+
+        function toggleAdvanced() {
+            const settings = document.getElementById('advancedSettings');
+            const icon = document.getElementById('advancedIcon');
+            
+            if (settings.classList.contains('hidden')) {
+                settings.classList.remove('hidden');
+                icon.textContent = '▲';
+            } else {
+                settings.classList.add('hidden');
+                icon.textContent = '▼';
+            }
+        }
+
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (file && file.type === 'text/plain') {
+                processFile(file);
+            } else {
+                showMessage('Veuillez sélectionner un fichier texte (.txt)', 'error');
+            }
+        }
+
+        function processFile(file) {
+            fileName = file.name;
+            const reader = new FileReader();
+            
+            reader.onload = (e) => {
+                fileContent = e.target.result;
+                document.getElementById('fileName').textContent = `📄 ${fileName} (${(file.size / 1024).toFixed(2)} KB)`;
+                document.getElementById('fileInfo').classList.remove('hidden');
+                document.getElementById('fileInfo').style.display = 'flex';
+                document.getElementById('translateBtn').disabled = false;
+                addLog(`Fichier chargé: ${fileName}`);
+            };
+            
+            reader.readAsText(file);
+        }
+
+        function resetFile() {
+            fileContent = '';
+            fileName = '';
+            document.getElementById('fileInput').value = '';
+            document.getElementById('fileInfo').classList.add('hidden');
+            document.getElementById('translateBtn').disabled = true;
+            document.getElementById('progressSection').classList.add('hidden');
+            document.getElementById('outputSection').classList.add('hidden');
+            document.getElementById('logContainer').innerHTML = '';
+            showMessage('', '');
+        }
+
+        function showMessage(text, type) {
+            const messagesDiv = document.getElementById('messages');
+            if (text) {
+                messagesDiv.innerHTML = `<div class="message ${type}">${text}</div>`;
+            } else {
+                messagesDiv.innerHTML = '';
+            }
+        }
+
+        function addLog(message) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logContainer = document.getElementById('logContainer');
+            logContainer.innerHTML += `[${timestamp}] ${message}\n`;
+            logContainer.scrollTop = logContainer.scrollHeight;
+        }
+
+        async function startTranslation() {
+            if (isTranslating) return;
+            
+            isTranslating = true;
+            startTime = Date.now();
+            translatedContent = '';
+            
+            // Récupération des paramètres
+            const config = {
+                text: fileContent,
+                source_language: document.getElementById('sourceLang').value,
+                target_language: document.getElementById('targetLang').value,
+                model: document.getElementById('model').value,
+                chunk_size: parseInt(document.getElementById('chunkSize').value),
+                api_endpoint: document.getElementById('apiEndpoint').value,
+                timeout: parseInt(document.getElementById('timeout').value),
+                context_window: parseInt(document.getElementById('contextWindow').value),
+                max_attempts: parseInt(document.getElementById('maxAttempts').value),
+                retry_delay: 2
+            };
+            
+            // UI
+            document.getElementById('translateBtn').disabled = true;
+            document.getElementById('translateBtn').innerHTML = '⏳ Traduction en cours...';
+            document.getElementById('progressSection').classList.remove('hidden');
+            document.getElementById('outputSection').classList.add('hidden');
+            document.getElementById('logContainer').innerHTML = '';
+            showMessage('', '');
+            
+            // Réinitialiser les stats
+            document.getElementById('totalChunks').textContent = '0';
+            document.getElementById('completedChunks').textContent = '0';
+            document.getElementById('failedChunks').textContent = '0';
+            document.getElementById('elapsedTime').textContent = '0s';
+            
+            try {
+                // Lancer la traduction via l'API
+                const response = await fetch(`${API_URL}/api/translate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(config)
+                });
+                
+                if (!response.ok) {
+                    throw new Error('Erreur lors du lancement de la traduction');
+                }
+                
+                const data = await response.json();
+                currentTranslationId = data.translation_id;
+                
+                addLog(`📋 ID de traduction: ${currentTranslationId}`);
+                
+            } catch (error) {
+                showMessage('❌ Erreur: ' + error.message, 'error');
+                isTranslating = false;
+                document.getElementById('translateBtn').disabled = false;
+                document.getElementById('translateBtn').innerHTML = '▶️ Lancer la traduction';
+            }
+        }
+
+        function updateProgress(percent) {
+            const progressBar = document.getElementById('progressBar');
+            progressBar.style.width = percent + '%';
+            progressBar.textContent = Math.round(percent) + '%';
+        }
+
+        function updateElapsedTime() {
+            if (startTime) {
+                const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                document.getElementById('elapsedTime').textContent = elapsed + 's';
+            }
+        }
+
+        function downloadTranslation() {
+            const blob = new Blob([translatedContent], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `translated_${fileName}`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            addLog('Fichier traduit téléchargé');
+        }
+    </script>
+</body>
+</html>
