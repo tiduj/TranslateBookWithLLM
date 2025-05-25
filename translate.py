@@ -156,18 +156,16 @@ async def generate_translation_request(main_content, context_before, context_aft
 
 ## TRANSLATION
 + Translate in the author's style
-+ Precisely preserve the deeper meaning of the text, without necessarily adhering strictly to the original wording, to enhance style and fluidity
++ Preserve meaning and enhance fluidity
 + Adapt expressions and culture to the {target_language} language
-+ Vary your vocabulary with synonyms, avoid words repetition
 + Maintain the original layout of the text
 
 ## FORMATING
-+ Translate ONLY the text enclosed within the tags "[START TO TRANSLATE]" and "[END TO TRANSLATE]" from {source_lang} into {target_language}.
-+ Refer to the "[START PREVIOUS TRANSLATION ({target_language})]" section (if provided) to ensure consistency with the previous paragraph.
++ Translate ONLY the text enclosed within the tags "[START TO TRANSLATE]" and "[END TO TRANSLATE]" from {source_lang} into {target_language}
++ Refer to the "[START PREVIOUS TRANSLATION ({target_language})]" section (if provided) to ensure consistency with the previous paragraph
 + Surround your translation with {TRANSLATE_TAG_IN} and {TRANSLATE_TAG_OUT} tags. For example: {TRANSLATE_TAG_IN}Your text translated here.{TRANSLATE_TAG_OUT}
-+ Return only the translation, formatted as requested.
-
-DO NOT WRITE ANYTHING BEFORE AND AFTER."""
++ Return ONLY the translation, formatted as requested
+"""
 
     previous_translation_block_text = ""
     if previous_translation_context and previous_translation_context.strip():
