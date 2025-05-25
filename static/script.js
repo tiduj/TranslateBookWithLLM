@@ -48,16 +48,26 @@ function finishCurrentFileTranslationUI(statusMessage, messageType, resultData) 
 
     if (resultData && resultData.result) {
         translatedContentFromServer = resultData.result;
-        document.getElementById('outputPreview').textContent =
-            (translatedContentFromServer || "").substring(0, 1000) +
-            ((translatedContentFromServer || "").length > 1000 ? '...' : '');
+        
+        // Handle different file types
+        if (resultData.file_type === 'epub') {
+            document.getElementById('outputPreview').textContent = '📚 EPUB file translated successfully. Click "Download" to get your translated ebook.';
+            document.getElementById('outputNote').style.display = 'none';
+        } else {
+            document.getElementById('outputPreview').textContent =
+                (translatedContentFromServer || "").substring(0, 1000) +
+                ((translatedContentFromServer || "").length > 1000 ? '...' : '');
+            document.getElementById('outputNote').style.display = 'block';
+        }
+        
         document.getElementById('outputSection').classList.remove('hidden');
         document.getElementById('outputTitle').textContent = `📄 Translation Result for ${currentFile.name}`;
 
         lastCompletedJobData = {
             translationId: currentProcessingJob.translationId,
             outputFilename: currentFile.outputFilename,
-            status: resultData.status
+            status: resultData.status,
+            fileType: resultData.file_type
         };
         document.getElementById('downloadBtn').disabled = !(lastCompletedJobData.outputFilename && (lastCompletedJobData.status === 'completed' || lastCompletedJobData.status === 'interrupted'));
 
@@ -81,9 +91,17 @@ function handleTranslationUpdate(data) {
     if (data.progress !== undefined) updateProgress(data.progress);
 
     if (data.stats) {
-        document.getElementById('totalChunks').textContent = data.stats.total_chunks || '0';
-        document.getElementById('completedChunks').textContent = data.stats.completed_chunks || '0';
-        document.getElementById('failedChunks').textContent = data.stats.failed_chunks || '0';
+        // For EPUB files, stats might be different
+        if (currentFile.fileType === 'epub') {
+            // Hide chunk-related stats for EPUB
+            document.getElementById('statsGrid').style.display = 'none';
+        } else {
+            document.getElementById('statsGrid').style.display = '';
+            document.getElementById('totalChunks').textContent = data.stats.total_chunks || '0';
+            document.getElementById('completedChunks').textContent = data.stats.completed_chunks || '0';
+            document.getElementById('failedChunks').textContent = data.stats.failed_chunks || '0';
+        }
+        
         if (data.stats.elapsed_time !== undefined) {
             document.getElementById('elapsedTime').textContent = data.stats.elapsed_time.toFixed(1) + 's';
         }
@@ -108,7 +126,14 @@ window.addEventListener('load', async () => {
     try {
         const response = await fetch(`${API_BASE_URL}/api/health`);
         if (!response.ok) throw new Error('Server health check failed');
+        const healthData = await response.json();
         addLog('Server health check OK.');
+        
+        // Check supported formats
+        if (healthData.supported_formats) {
+            addLog(`Supported file formats: ${healthData.supported_formats.join(', ')}`);
+        }
+        
         loadAvailableModels();
         const configResponse = await fetch(`${API_BASE_URL}/api/config`);
         if (configResponse.ok) {
@@ -119,6 +144,9 @@ window.addEventListener('load', async () => {
             document.getElementById('contextWindow').value = defaultConfig.context_window || 4096;
             document.getElementById('maxAttempts').value = defaultConfig.max_attempts || 2;
             document.getElementById('retryDelay').value = defaultConfig.retry_delay || 2;
+            
+            // Update default output pattern
+            document.getElementById('outputFilenamePattern').value = "translated_{originalName}.{ext}";
         }
     } catch (error) {
         showMessage(`⚠️ Server unavailable at ${API_BASE_URL}. Ensure Python server is running. ${error.message}`, 'error');
@@ -172,8 +200,11 @@ fileUploadArea.addEventListener('drop', (e) => {
     const files = e.dataTransfer.files;
     if (files.length > 0) {
         Array.from(files).forEach(file => {
-            if (file.type === 'text/plain') addFileToList(file);
-            else showMessage(`File '${file.name}' is not a .txt file and was skipped.`, 'error');
+            if (file.type === 'text/plain' || file.name.toLowerCase().endsWith('.epub')) {
+                addFileToList(file);
+            } else {
+                showMessage(`File '${file.name}' is not a .txt or .epub file and was skipped.`, 'error');
+            }
         });
         updateFileDisplay();
     }
@@ -198,37 +229,84 @@ function handleFileSelect(e) {
     const files = e.target.files;
     if (files.length > 0) {
         Array.from(files).forEach(file => {
-            if (file.type === 'text/plain') addFileToList(file);
-            else showMessage(`File '${file.name}' is not a .txt file and was skipped.`, 'error');
+            if (file.type === 'text/plain' || file.name.toLowerCase().endsWith('.epub')) {
+                addFileToList(file);
+            } else {
+                showMessage(`File '${file.name}' is not a .txt or .epub file and was skipped.`, 'error');
+            }
         });
         updateFileDisplay();
     }
      document.getElementById('fileInput').value = '';
 }
 
-function addFileToList(file) {
+async function addFileToList(file) {
     if (filesToProcess.find(f => f.name === file.name)) {
         showMessage(`File '${file.name}' is already in the list.`, 'info');
         return;
     }
-    const reader = new FileReader();
-    reader.onload = (e) => {
-        const originalNameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
-        const outputPattern = document.getElementById('outputFilenamePattern').value || "translated_{originalName}.txt";
-        const outputFilename = outputPattern.replace("{originalName}", originalNameWithoutExt);
+    
+    const fileExtension = file.name.split('.').pop().toLowerCase();
+    const originalNameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
+    const outputPattern = document.getElementById('outputFilenamePattern').value || "translated_{originalName}.{ext}";
+    const outputFilename = outputPattern
+        .replace("{originalName}", originalNameWithoutExt)
+        .replace("{ext}", fileExtension);
 
-        filesToProcess.push({
-            name: file.name,
-            content: e.target.result,
-            status: 'Queued',
-            outputFilename: outputFilename,
-            size: file.size,
-            translationId: null,
-            result: null
-        });
-        updateFileDisplay();
-    };
-    reader.readAsText(file);
+    if (fileExtension === 'epub') {
+        // For EPUB files, upload them to the server first
+        showMessage(`Uploading EPUB file: ${file.name}...`, 'info');
+        
+        const formData = new FormData();
+        formData.append('file', file);
+        
+        try {
+            const response = await fetch(`${API_BASE_URL}/api/upload`, {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Upload failed: ${response.statusText}`);
+            }
+            
+            const uploadResult = await response.json();
+            
+            filesToProcess.push({
+                name: file.name,
+                filePath: uploadResult.file_path,
+                fileType: 'epub',
+                status: 'Queued',
+                outputFilename: outputFilename,
+                size: file.size,
+                translationId: null,
+                result: null
+            });
+            
+            showMessage(`EPUB file '${file.name}' uploaded successfully.`, 'success');
+            updateFileDisplay();
+            
+        } catch (error) {
+            showMessage(`Failed to upload EPUB file '${file.name}': ${error.message}`, 'error');
+        }
+    } else {
+        // For text files, read the content as before
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            filesToProcess.push({
+                name: file.name,
+                content: e.target.result,
+                fileType: 'txt',
+                status: 'Queued',
+                outputFilename: outputFilename,
+                size: file.size,
+                translationId: null,
+                result: null
+            });
+            updateFileDisplay();
+        };
+        reader.readAsText(file);
+    }
 }
 
 function updateFileDisplay() {
@@ -239,7 +317,10 @@ function updateFileDisplay() {
         filesToProcess.forEach(file => {
             const li = document.createElement('li');
             li.setAttribute('data-filename', file.name);
-            li.textContent = `${file.name} (${(file.size / 1024).toFixed(2)} KB) `;
+            
+            const fileIcon = file.fileType === 'epub' ? '📚' : '📄';
+            li.textContent = `${fileIcon} ${file.name} (${(file.size / 1024).toFixed(2)} KB) `;
+            
             const statusSpan = document.createElement('span');
             statusSpan.className = 'file-status';
             statusSpan.textContent = `(${file.status})`;
@@ -277,6 +358,8 @@ function resetFiles() {
     document.getElementById('customTargetLang').style.display = 'none';
     document.getElementById('sourceLang').selectedIndex = 0;
     document.getElementById('targetLang').selectedIndex = 0;
+    document.getElementById('statsGrid').style.display = '';
+    document.getElementById('outputNote').style.display = 'block';
     updateProgress(0);
     showMessage('', '');
     addLog("Form and file list reset.");
@@ -358,12 +441,18 @@ async function processNextFileInQueue() {
     document.getElementById('elapsedTime').textContent = '0s';
     document.getElementById('logContainer').innerHTML = '';
     document.getElementById('outputSection').classList.add('hidden');
-     document.getElementById('downloadBtn').disabled = true;
+    document.getElementById('downloadBtn').disabled = true;
 
+    // Show/hide stats based on file type
+    if (fileToTranslate.fileType === 'epub') {
+        document.getElementById('statsGrid').style.display = 'none';
+    } else {
+        document.getElementById('statsGrid').style.display = '';
+    }
 
     document.getElementById('currentFileProgressTitle').textContent = `📊 Translating: ${fileToTranslate.name}`;
     document.getElementById('progressSection').classList.remove('hidden');
-    addLog(`▶️ Starting translation for: ${fileToTranslate.name}`);
+    addLog(`▶️ Starting translation for: ${fileToTranslate.name} (${fileToTranslate.fileType.toUpperCase()})`);
     updateFileStatusInList(fileToTranslate.name, 'Preparing...');
 
     let sourceLanguageVal = document.getElementById('sourceLang').value;
@@ -372,7 +461,6 @@ async function processNextFileInQueue() {
     if (targetLanguageVal === 'Other') targetLanguageVal = document.getElementById('customTargetLang').value.trim();
 
     const config = {
-        text: fileToTranslate.content,
         source_language: sourceLanguageVal,
         target_language: targetLanguageVal,
         model: document.getElementById('model').value,
@@ -382,8 +470,16 @@ async function processNextFileInQueue() {
         context_window: parseInt(document.getElementById('contextWindow').value),
         max_attempts: parseInt(document.getElementById('maxAttempts').value),
         retry_delay: parseInt(document.getElementById('retryDelay').value),
-        output_filename: fileToTranslate.outputFilename
+        output_filename: fileToTranslate.outputFilename,
+        file_type: fileToTranslate.fileType
     };
+
+    // Add file-specific data
+    if (fileToTranslate.fileType === 'epub') {
+        config.file_path = fileToTranslate.filePath;
+    } else {
+        config.text = fileToTranslate.content;
+    }
 
     try {
         const response = await fetch(`${API_BASE_URL}/api/translate`, {
@@ -450,7 +546,9 @@ function downloadLastTranslation() {
     if (lastCompletedJobData.status !== 'completed' && lastCompletedJobData.status !== 'interrupted') {
          showMessage(`Cannot download file as its status is '${lastCompletedJobData.status}'.`, 'error'); return;
     }
+    
+    const fileTypeIcon = lastCompletedJobData.fileType === 'epub' ? '📚' : '📄';
     const downloadUrl = `${API_BASE_URL}/api/download/${lastCompletedJobData.translationId}`;
-    addLog(`Initiating download for ${lastCompletedJobData.outputFilename} from: ${downloadUrl}`);
+    addLog(`${fileTypeIcon} Initiating download for ${lastCompletedJobData.outputFilename} from: ${downloadUrl}`);
     window.location.href = downloadUrl;
 }

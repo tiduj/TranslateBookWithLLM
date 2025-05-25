@@ -89,9 +89,10 @@ def split_text_into_chunks_with_context(text, main_lines_per_chunk_target):
 
         main_part_lines = all_lines[final_main_start_index:final_main_end_index]
 
-        if not main_part_lines and final_main_start_index < len(all_lines):
-            final_main_end_index = len(all_lines)
-            main_part_lines = all_lines[final_main_start_index:final_main_end_index]
+        if not main_part_lines and final_main_end_index < len(all_lines):
+            current_position = final_main_end_index
+            if current_position <= initial_main_start_index: current_position = initial_main_start_index + 1
+            continue
 
         if not main_part_lines:
             break
@@ -131,8 +132,8 @@ def split_text_into_chunks_with_context(text, main_lines_per_chunk_target):
     return structured_chunks
 
 async def generate_translation_request(main_content, context_before, context_after, previous_translation_context,
-                                     source_language="English", target_language="French", model=DEFAULT_MODEL,
-                                     api_endpoint_param=API_ENDPOINT):
+                                       source_language="English", target_language="French", model=DEFAULT_MODEL,
+                                       api_endpoint_param=API_ENDPOINT):
     full_raw_response = ""
     source_lang = source_language.upper()
 
@@ -175,6 +176,10 @@ async def generate_translation_request(main_content, context_before, context_aft
             "num_ctx": OLLAMA_NUM_CTX
         }
     }
+
+    print("\n--- Request sent to LLM (for debugging) ---")
+    print(json.dumps(payload, indent=2))
+    print("------------------------------------------\n")
 
     try:
         response = requests.post(api_endpoint_param, json=payload, timeout=REQUEST_TIMEOUT)
@@ -466,9 +471,9 @@ async def translate_element_preserve_structure(element, source_language, target_
 
 
 async def translate_epub_file(input_filepath, output_filepath,
-                            source_language="English", target_language="French",
-                            model_name=DEFAULT_MODEL, chunk_target_size=MAIN_LINES_PER_CHUNK,
-                            cli_api_endpoint=API_ENDPOINT):
+                              source_language="English", target_language="French",
+                              model_name=DEFAULT_MODEL, chunk_target_size=MAIN_LINES_PER_CHUNK,
+                              cli_api_endpoint=API_ENDPOINT):
     """Translate an EPUB file while preserving its structure."""
     
     if not os.path.exists(input_filepath):
@@ -603,9 +608,9 @@ async def translate_epub_file(input_filepath, output_filepath,
 
 
 async def translate_file(input_filepath, output_filepath,
-                        source_language="English", target_language="French",
-                        model_name=DEFAULT_MODEL, chunk_target_size=MAIN_LINES_PER_CHUNK,
-                        cli_api_endpoint=API_ENDPOINT):
+                         source_language="English", target_language="French",
+                         model_name=DEFAULT_MODEL, chunk_target_size=MAIN_LINES_PER_CHUNK,
+                         cli_api_endpoint=API_ENDPOINT):
     """Translate a file based on its extension."""
     
     # Determine file type
@@ -613,15 +618,15 @@ async def translate_file(input_filepath, output_filepath,
     
     if ext == '.epub':
         await translate_epub_file(input_filepath, output_filepath,
-                                source_language, target_language,
-                                model_name, chunk_target_size,
-                                cli_api_endpoint)
+                                 source_language, target_language,
+                                 model_name, chunk_target_size,
+                                 cli_api_endpoint)
     else:
         # Default to text file translation
         await translate_text_file(input_filepath, output_filepath,
-                                source_language, target_language,
-                                model_name, chunk_target_size,
-                                cli_api_endpoint)
+                                 source_language, target_language,
+                                 model_name, chunk_target_size,
+                                 cli_api_endpoint)
 
 
 if __name__ == "__main__":

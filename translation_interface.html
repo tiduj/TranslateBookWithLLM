@@ -75,8 +75,8 @@
                     </div>
                      <div class="form-group">
                         <label>Output Filename Pattern</label>
-                        <input type="text" class="form-control" id="outputFilenamePattern" value="translated_{originalName}.txt" title="Use {originalName} as placeholder for original filename without extension.">
-                        <small>Example: `translated_{originalName}_to_FR.txt`</small>
+                        <input type="text" class="form-control" id="outputFilenamePattern" value="translated_{originalName}.{ext}" title="Use {originalName} as placeholder for original filename without extension and {ext} for the file extension.">
+                        <small>Example: `translated_{originalName}_to_FR.{ext}`</small>
                     </div>
                 </div>
 
@@ -111,9 +111,9 @@
                 </div>
 
                 <div class="file-upload" id="fileUpload" onclick="document.getElementById('fileInput').click()">
-                    <h3>📁 Drag & Drop your .txt files here</h3>
+                    <h3>📁 Drag & Drop your .txt or .epub files here</h3>
                     <p>or click to select</p>
-                    <input type="file" id="fileInput" accept=".txt" style="display: none;" onchange="handleFileSelect(event)" multiple> </div>
+                    <input type="file" id="fileInput" accept=".txt,.epub" style="display: none;" onchange="handleFileSelect(event)" multiple> </div>
 
                 <div id="fileInfo" class="hidden" style="margin-bottom: 20px;">
                     <h4>Selected Files:</h4>
@@ -135,7 +135,7 @@
                     <div class="progress-bar-container">
                         <div class="progress-bar" id="progressBar" style="width: 0%">0%</div>
                     </div>
-                    <div class="stats-grid">
+                    <div class="stats-grid" id="statsGrid">
                         <div class="stat-card"><h3 id="totalChunks">0</h3><p>Total Chunks</p></div>
                         <div class="stat-card"><h3 id="completedChunks">0</h3><p>Completed</p></div>
                         <div class="stat-card"><h3 id="failedChunks">0</h3><p>Failed</p></div>
@@ -152,7 +152,7 @@
                         </button>
                     </div>
                     <div class="output-preview" id="outputPreview"></div>
-                    <p style="margin-top: 15px; color: #ACB5B7; font-size: 14px;">
+                    <p style="margin-top: 15px; color: #ACB5B7; font-size: 14px;" id="outputNote">
                         ℹ️ Preview limited to the first 1000 characters. Full text saved to server.
                     </p>
                 </div>
