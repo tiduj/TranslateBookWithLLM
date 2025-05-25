@@ -14,10 +14,10 @@ import html
 # --- Configuration ---
 API_ENDPOINT = "http://ai_server.mds.com:11434/api/generate"
 DEFAULT_MODEL = "mistral-small:24b"
-MAIN_LINES_PER_CHUNK = 150
+MAIN_LINES_PER_CHUNK = 25
 REQUEST_TIMEOUT = 60
 OLLAMA_NUM_CTX = 2048
-SENTENCE_TERMINATORS = tuple(list(".!?") + ['."', '?"', '!"', '."', ".'", "?'", "!'", ":", ".)"])
+SENTENCE_TERMINATORS = tuple(list(".!?") + ['."', '?"', '!"', '.”', ".'", "?'", "!'", ":", ".)"])
 MAX_TRANSLATION_ATTEMPTS = 2
 RETRY_DELAY_SECONDS = 2
 TRANSLATE_TAG_IN = "[START]"
@@ -90,11 +90,11 @@ def split_text_into_chunks_with_context(text, main_lines_per_chunk_target):
         if final_main_end_index <= final_main_start_index:
             if initial_main_start_index < len(all_lines): 
                 if initial_main_end_index > initial_main_start_index : 
-                     final_main_start_index = initial_main_start_index
-                     final_main_end_index = initial_main_end_index
+                    final_main_start_index = initial_main_start_index
+                    final_main_end_index = initial_main_end_index
                 else: 
-                     final_main_start_index = initial_main_start_index
-                     final_main_end_index = len(all_lines) 
+                    final_main_start_index = initial_main_start_index
+                    final_main_end_index = len(all_lines) 
             else: 
                 break 
 
@@ -142,32 +142,15 @@ def split_text_into_chunks_with_context(text, main_lines_per_chunk_target):
 
         current_position = final_main_end_index
         if current_position <= initial_main_start_index :
-             current_position = initial_main_start_index + 1 
+            current_position = initial_main_start_index + 1 
     return structured_chunks
 
 async def generate_translation_request(main_content, context_before, context_after, previous_translation_context,
-                                     next_content_to_translate="", source_language="English", target_language="French", 
-                                     model=DEFAULT_MODEL, api_endpoint_param=API_ENDPOINT):
-    """
-    Génère une requête de traduction en incluant le contexte précédent ET suivant.
-    
-    Args:
-        main_content: Le texte principal à traduire
-        context_before: Le contexte avant en langue source
-        context_after: Le contexte après en langue source  
-        previous_translation_context: La traduction précédente
-        next_content_to_translate: Le prochain bloc qui sera traduit (nouveau paramètre)
-        source_language: Langue source
-        target_language: Langue cible
-        model: Modèle LLM à utiliser
-        api_endpoint_param: Point d'API
-    """
+                                       source_language="English", target_language="French", model=DEFAULT_MODEL,
+                                       api_endpoint_param=API_ENDPOINT):
     full_raw_response = ""
     source_lang = source_language.upper()
 
-    # --- Construction du prompt structuré ---
-
-    # 1. Bloc : Rôle et Instructions
     role_and_instructions_block = f"""## ROLE
 # You are a {target_language} professional writer.
 
@@ -177,18 +160,15 @@ async def generate_translation_request(main_content, context_before, context_aft
 + Adapt expressions and culture to the {target_language} language
 + Vary your vocabulary with synonyms, avoid words repetition
 + Maintain the original layout of the text
-+ Consider the next paragraph context to ensure smooth transitions
 
 ## FORMATING
 + Translate ONLY the text enclosed within the tags "[START TO TRANSLATE]" and "[END TO TRANSLATE]" from {source_lang} into {target_language}.
 + Refer to the "[START PREVIOUS TRANSLATION ({target_language})]" section (if provided) to ensure consistency with the previous paragraph.
-+ Refer to the "[NEXT PARAGRAPH TO BE TRANSLATED]" section (if provided) to ensure smooth transition to the next content.
 + Surround your translation with {TRANSLATE_TAG_IN} and {TRANSLATE_TAG_OUT} tags. For example: {TRANSLATE_TAG_IN}Your text translated here.{TRANSLATE_TAG_OUT}
 + Return only the translation, formatted as requested.
 
 DO NOT WRITE ANYTHING BEFORE AND AFTER."""
 
-    # 2. Bloc : Extrait de la traduction précédente (conditionnel)
     previous_translation_block_text = ""
     if previous_translation_context and previous_translation_context.strip():
         previous_translation_block_text = f"""
@@ -196,77 +176,32 @@ DO NOT WRITE ANYTHING BEFORE AND AFTER."""
 {previous_translation_context}
 [END PREVIOUS TRANSLATION ({target_language})]"""
     
-    # 3. Bloc : Contexte avant en langue source (nouveau)
-    context_before_block_text = ""
-    if context_before and context_before.strip():
-        context_before_block_text = f"""
-[CONTEXT BEFORE ({source_lang})]
-{context_before}
-[END CONTEXT BEFORE ({source_lang})]"""
-    
-    # 4. Bloc : Texte à traduire
     text_to_translate_block = f"""
 [START TO TRANSLATE]
 {main_content}
 [END TO TRANSLATE]"""
 
-    # 5. Bloc : Contexte après en langue source (nouveau)
-    context_after_block_text = ""
-    if context_after and context_after.strip():
-        context_after_block_text = f"""
-[CONTEXT AFTER ({source_lang})]
-{context_after}
-[END CONTEXT AFTER ({source_lang})]"""
-
-    # 6. Bloc : Prochain paragraphe à traduire (nouveau)
-    next_paragraph_block_text = ""
-    if next_content_to_translate and next_content_to_translate.strip():
-        next_paragraph_block_text = f"""
-[NEXT PARAGRAPH TO BE TRANSLATED ({source_lang})]
-{next_content_to_translate}
-[END NEXT PARAGRAPH TO BE TRANSLATED ({source_lang})]"""
-
-    # Assemblage final du prompt dans l'ordre souhaité
     structured_prompt_parts = [
         role_and_instructions_block,
         previous_translation_block_text,
-        context_before_block_text,
-        text_to_translate_block,
-        context_after_block_text,
-        next_paragraph_block_text
+        text_to_translate_block
     ]
-    
+
     structured_prompt = "\n\n".join(part.strip() for part in structured_prompt_parts if part and part.strip()).strip()
-    
-    # --- Fin de la construction du prompt structuré ---
 
     payload = {
         "model": model,
-        "prompt": structured_prompt,
+        "prompt": structured_prompt, 
         "stream": False,
         "options": {
             "num_ctx": OLLAMA_NUM_CTX
         }
     }
 
-    print("\n--- LLM Request ---")
-    print("\n--- Structured Prompt for LLM ---")
+    print("\n--- START LLM Request ---")
     print(structured_prompt)
-    print("\n--- Raw Payload ---")
-    print(json.dumps(payload, indent=2, ensure_ascii=False))
-    print("------------------------------------------\n")
-
-    if context_before is not None:
-        print(f"Context Before: {context_before}")
-    print(f"Main Content: '{main_content}'")
-    if context_after is not None:
-        print(f"Context After: '{context_after}'")
-    if previous_translation_context is not None:
-        print(f"Previous Translation: '{previous_translation_context}'")
-    if next_content_to_translate is not None:
-        print(f"Next Content to Translate: '{next_content_to_translate}'")
-    print("--- End LLM Request ---\n")
-
+    print("\n--- END LLM Request ---")
+    
     try:
         response = requests.post(api_endpoint_param, json=payload, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
@@ -291,7 +226,6 @@ DO NOT WRITE ANYTHING BEFORE AND AFTER."""
         tqdm.write(f"\nJSON decoding error: {e}. Raw response: {raw_response_text[:500]}...")
         return None
     
-    # Extraction de la traduction basée sur les balises
     escaped_tag_in = re.escape(TRANSLATE_TAG_IN)
     escaped_tag_out = re.escape(TRANSLATE_TAG_OUT)
     regex_pattern = rf"{escaped_tag_in}(.*?){escaped_tag_out}"
@@ -306,9 +240,9 @@ DO NOT WRITE ANYTHING BEFORE AND AFTER."""
         return None
 
 async def translate_text_file(input_filepath, output_filepath,
-                              source_language="English", target_language="French",
-                              model_name=DEFAULT_MODEL, chunk_target_lines_cli=MAIN_LINES_PER_CHUNK,
-                              cli_api_endpoint=API_ENDPOINT):
+                               source_language="English", target_language="French",
+                               model_name=DEFAULT_MODEL, chunk_target_lines_cli=MAIN_LINES_PER_CHUNK,
+                               cli_api_endpoint=API_ENDPOINT):
     if not os.path.exists(input_filepath):
         print(f"Error: Input file '{input_filepath}' not found.")
         return
@@ -352,12 +286,6 @@ async def translate_text_file(input_filepath, output_filepath,
             full_translation_parts.append(main_content_to_translate) 
             continue
 
-        # Obtenir le contenu du prochain chunk qui sera traduit
-        next_content_to_translate = ""
-        if i + 1 < total_chunks:
-            next_chunk = structured_chunks[i + 1]
-            next_content_to_translate = next_chunk["main_content"]
-
         translated_chunk_text = None
         current_attempts = 0
         while current_attempts < MAX_TRANSLATION_ATTEMPTS and translated_chunk_text is None:
@@ -371,7 +299,6 @@ async def translate_text_file(input_filepath, output_filepath,
                 context_before_text,
                 context_after_text,
                 last_successful_llm_context,
-                next_content_to_translate,  # Nouveau paramètre
                 source_language,
                 target_language,
                 model_name,
@@ -399,23 +326,7 @@ async def translate_text_file(input_filepath, output_filepath,
     except Exception as e:
         print(f"Error saving output file: {e}")
 
-
-async def translate_text_with_chunking(text_to_translate, source_language, target_language, model_name, 
-                                     cli_api_endpoint, chunk_target_lines, previous_llm_context="", 
-                                     next_text_preview=""):
-    """
-    Traduit un texte en le découpant en chunks si nécessaire.
-    
-    Args:
-        text_to_translate: Texte à traduire
-        source_language: Langue source
-        target_language: Langue cible
-        model_name: Modèle LLM
-        cli_api_endpoint: Endpoint API
-        chunk_target_lines: Nombre de lignes cibles par chunk
-        previous_llm_context: Contexte de traduction précédent
-        next_text_preview: Aperçu du texte suivant (nouveau paramètre)
-    """
+async def translate_text_with_chunking(text_to_translate, source_language, target_language, model_name, cli_api_endpoint, chunk_target_lines, previous_llm_context=""):
     if not text_to_translate.strip():
         return text_to_translate 
 
@@ -423,7 +334,7 @@ async def translate_text_with_chunking(text_to_translate, source_language, targe
 
     if not structured_chunks:
         translated_text_segment = await generate_translation_request(
-            text_to_translate, "", "", previous_llm_context, next_text_preview,
+            text_to_translate, "", "", previous_llm_context,
             source_language, target_language, model_name, api_endpoint_param=cli_api_endpoint
         )
         return translated_text_segment if translated_text_segment is not None else text_to_translate
@@ -431,7 +342,7 @@ async def translate_text_with_chunking(text_to_translate, source_language, targe
     translated_parts = []
     current_sub_chunk_llm_context = previous_llm_context 
 
-    for idx, chunk_data in enumerate(structured_chunks):
+    for chunk_data in structured_chunks:
         main_content = chunk_data["main_content"]
         context_before_for_llm = chunk_data["context_before"]
         context_after_for_llm = chunk_data["context_after"]
@@ -441,16 +352,9 @@ async def translate_text_with_chunking(text_to_translate, source_language, targe
                 translated_parts.append(main_content)
             continue
 
-        # Obtenir le contenu du prochain chunk
-        next_chunk_content = ""
-        if idx + 1 < len(structured_chunks):
-            next_chunk_content = structured_chunks[idx + 1]["main_content"]
-        elif next_text_preview:
-            next_chunk_content = next_text_preview
-
         translated_segment = await generate_translation_request(
-            main_content, context_before_for_llm, context_after_for_llm, current_sub_chunk_llm_context,
-            next_chunk_content, source_language, target_language, model_name, api_endpoint_param=cli_api_endpoint
+            main_content, context_before_for_llm, context_after_for_llm, current_sub_chunk_llm_context, 
+            source_language, target_language, model_name, api_endpoint_param=cli_api_endpoint
         )
 
         if translated_segment is not None:
@@ -468,27 +372,11 @@ async def translate_text_with_chunking(text_to_translate, source_language, targe
     final_translation = "\n".join(translated_parts)
     return final_translation if final_translation.strip() or text_to_translate.strip() == "" else text_to_translate
 
-
-async def translate_element_preserve_structure(element, source_language, target_language, model_name, 
-                                             cli_api_endpoint, chunk_target_lines=MAIN_LINES_PER_CHUNK, 
-                                             previous_llm_context="", next_element_text=""):
-    """
-    Traduit un élément XML/HTML en préservant sa structure.
-    
-    Args:
-        element: Élément à traduire
-        source_language: Langue source
-        target_language: Langue cible
-        model_name: Modèle LLM
-        cli_api_endpoint: Endpoint API
-        chunk_target_lines: Nombre de lignes cibles par chunk
-        previous_llm_context: Contexte de traduction précédent
-        next_element_text: Texte du prochain élément (nouveau paramètre)
-    """
+async def translate_element_preserve_structure(element, source_language, target_language, model_name, cli_api_endpoint, chunk_target_lines=MAIN_LINES_PER_CHUNK, previous_llm_context=""):
     if element.tag in ['{http://www.w3.org/1999/xhtml}script', 
-                       '{http://www.w3.org/1999/xhtml}style',
-                       '{http://www.w3.org/1999/xhtml}meta',
-                       '{http://www.w3.org/1999/xhtml}link']:
+                        '{http://www.w3.org/1999/xhtml}style',
+                        '{http://www.w3.org/1999/xhtml}meta',
+                        '{http://www.w3.org/1999/xhtml}link']:
         return previous_llm_context 
     
     content_block_tags = [
@@ -512,8 +400,7 @@ async def translate_element_preserve_structure(element, source_language, target_
                 block_text_content.strip(),
                 source_language, target_language, model_name,
                 cli_api_endpoint, chunk_target_lines,
-                current_element_overall_context,
-                next_element_text  # Nouveau paramètre
+                current_element_overall_context
             )
             if translated_block is not None and translated_block.strip() != block_text_content.strip() : 
                 element.text = translated_block
@@ -524,9 +411,9 @@ async def translate_element_preserve_structure(element, source_language, target_
                 if len(words) > 150: current_element_overall_context = " ".join(words[-150:])
                 elif translated_block.strip(): current_element_overall_context = translated_block
             elif translated_block is None: 
-                 element.text = f"[BLOCK_TRANSLATION_ERROR]{block_text_content.strip()}[/BLOCK_TRANSLATION_ERROR]"
-                 for child_node in list(element): element.remove(child_node)
-                 current_element_overall_context = ""
+                element.text = f"[BLOCK_TRANSLATION_ERROR]{block_text_content.strip()}[/BLOCK_TRANSLATION_ERROR]"
+                for child_node in list(element): element.remove(child_node)
+                current_element_overall_context = ""
         return current_element_overall_context
 
     if element.text:
@@ -538,8 +425,7 @@ async def translate_element_preserve_structure(element, source_language, target_
             
             translated = await translate_text_with_chunking(
                 text_to_translate, source_language, target_language, model_name,
-                cli_api_endpoint, chunk_target_lines, current_element_overall_context,
-                next_element_text  # Nouveau paramètre
+                cli_api_endpoint, chunk_target_lines, current_element_overall_context
             )
             if translated is not None and translated != text_to_translate:
                 element.text = leading_space + translated + trailing_space
@@ -550,17 +436,10 @@ async def translate_element_preserve_structure(element, source_language, target_
                 element.text = leading_space + f"[TEXT_TRANSLATION_ERROR]{text_to_translate}[/TEXT_TRANSLATION_ERROR]" + trailing_space
                 current_element_overall_context = ""
 
-    # Récupérer le texte du prochain enfant pour le contexte
-    children = list(element)
-    for i, child in enumerate(children):
-        next_child_text = ""
-        if i + 1 < len(children):
-            next_child_text = "".join(children[i + 1].itertext())[:200]  # Limiter la taille
-        
+    for child in element:
         current_element_overall_context = await translate_element_preserve_structure(
             child, source_language, target_language, model_name, 
-            cli_api_endpoint, chunk_target_lines, current_element_overall_context,
-            next_child_text
+            cli_api_endpoint, chunk_target_lines, current_element_overall_context
         )
     
     if element.tail:
@@ -572,8 +451,7 @@ async def translate_element_preserve_structure(element, source_language, target_
 
             translated_tail = await translate_text_with_chunking(
                 tail_to_translate, source_language, target_language, model_name,
-                cli_api_endpoint, chunk_target_lines, current_element_overall_context,
-                ""  # Pas de contexte suivant pour le tail
+                cli_api_endpoint, chunk_target_lines, current_element_overall_context
             )
             if translated_tail is not None and translated_tail != tail_to_translate:
                 element.tail = leading_space_tail + translated_tail + trailing_space_tail
@@ -586,11 +464,10 @@ async def translate_element_preserve_structure(element, source_language, target_
             
     return current_element_overall_context
 
-
 async def translate_epub_file(input_filepath, output_filepath,
-                              source_language="English", target_language="French",
-                              model_name=DEFAULT_MODEL, chunk_target_lines_arg=MAIN_LINES_PER_CHUNK,
-                              cli_api_endpoint=API_ENDPOINT):
+                               source_language="English", target_language="French",
+                               model_name=DEFAULT_MODEL, chunk_target_lines_arg=MAIN_LINES_PER_CHUNK,
+                               cli_api_endpoint=API_ENDPOINT):
     if not os.path.exists(input_filepath):
         print(f"Error: Input file '{input_filepath}' not found.")
         return
@@ -633,27 +510,6 @@ async def translate_epub_file(input_filepath, output_filepath,
             opf_dir = os.path.dirname(opf_path)
             last_processed_llm_chapter_context = "" 
 
-            # Pré-charger les textes des chapitres suivants pour le contexte
-            chapter_texts = []
-            for content_href in content_files_hrefs:
-                file_path_abs = os.path.join(opf_dir, content_href)
-                if os.path.exists(file_path_abs):
-                    try:
-                        with open(file_path_abs, 'r', encoding='utf-8') as f_chap:
-                            chap_str_content = f_chap.read()
-                        parser = etree.XMLParser(encoding='utf-8', recover=True, remove_blank_text=False)
-                        doc_chap_root = etree.fromstring(chap_str_content.encode('utf-8'), parser)
-                        body_el = doc_chap_root.find('.//{http://www.w3.org/1999/xhtml}body')
-                        if body_el is not None:
-                            chapter_text = "".join(body_el.itertext())
-                            chapter_texts.append(chapter_text[:500])  # Limiter la taille du contexte
-                        else:
-                            chapter_texts.append("")
-                    except:
-                        chapter_texts.append("")
-                else:
-                    chapter_texts.append("")
-
             for idx, content_href in enumerate(tqdm(content_files_hrefs, desc="Translating EPUB chapters", unit="chapter")):
                 file_path_abs = os.path.join(opf_dir, content_href)
                 if not os.path.exists(file_path_abs):
@@ -669,17 +525,10 @@ async def translate_epub_file(input_filepath, output_filepath,
 
                     if body_el is not None:
                         tqdm.write(f"\nTranslating chapter {idx+1}/{len(content_files_hrefs)}: {content_href}")
-                        
-                        # Obtenir le texte du prochain chapitre pour le contexte
-                        next_chapter_text = ""
-                        if idx + 1 < len(chapter_texts):
-                            next_chapter_text = chapter_texts[idx + 1]
-                        
                         last_processed_llm_chapter_context = await translate_element_preserve_structure(
                             body_el, source_language, target_language, model_name, 
                             cli_api_endpoint, chunk_target_lines_arg, 
-                            last_processed_llm_chapter_context,
-                            next_chapter_text  # Contexte du prochain chapitre
+                            last_processed_llm_chapter_context
                         )
                     
                     with open(file_path_abs, 'wb') as f_chap_out:
@@ -688,7 +537,7 @@ async def translate_epub_file(input_filepath, output_filepath,
                 except etree.XMLSyntaxError as e_xml:
                     tqdm.write(f"XML Syntax Error in {content_href}: {e_xml}. Chapter skipped.")
                 except Exception as e_chap:
-                    tqdm.write(f"Error processing chapter {content_href}: {e_chap}")                
+                    tqdm.write(f"Error processing chapter {content_href}: {e_chap}") 
 
             tree.write(opf_path, encoding='utf-8', xml_declaration=True, pretty_print=True)
 
@@ -710,7 +559,6 @@ async def translate_epub_file(input_filepath, output_filepath,
             print(f"Major error processing EPUB file '{input_filepath}': {e_epub}")
             import traceback
             traceback.print_exc()
-
 
 async def translate_file(input_filepath, output_filepath,
                          source_language="English", target_language="French",
