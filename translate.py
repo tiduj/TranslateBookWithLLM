@@ -200,8 +200,8 @@ DO NOT WRITE ANYTHING BEFORE AND AFTER."""
 
     print("\n--- START LLM Request ---")
     print(structured_prompt)
+    #print(json.dumps(payload, indent=2, ensure_ascii=False))
     print("\n--- END LLM Request ---")
-    
     try:
         response = requests.post(api_endpoint_param, json=payload, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
