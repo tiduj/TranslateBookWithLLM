@@ -239,9 +239,7 @@ structured_prompt = f"""
   - **Context Window**: Match your model's capabilities
   - **EPUB Files**:
       - The script preserves the structure of the EPUB file. The original quality of the structure is important, because if line breaks are present in the middle of a sentence, it will be cut off in the translation chunk, causing translation errors. If the quality is too poor, it is better to convert the EPUB file to .txt using Calibre, and then translate it into a .txt file.
-      - The chunk size applies to lines within HTML content blocks.
-      - For best results, use a chunk size that balances speed and contextual understanding.
-  - **For Books**: Use 25-40 lines per chunk for best balance
+      - The chunk size applies to lines within HTML content blocks, chunk are mostly shorter than in .txt files.
 
 ### Content Preparation
 
