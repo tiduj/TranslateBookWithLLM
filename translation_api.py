@@ -1,6 +1,6 @@
 """
 Flask API for the Translation Interface
-Works with translate.py
+Works with translate.py - Now supports EPUB files
 """
 
 import json
@@ -14,12 +14,16 @@ from flask_socketio import SocketIO, emit
 import threading
 import time
 from datetime import datetime
+import tempfile
+import zipfile
 
 # Import the original translation script
 try:
     from translate import (
         split_text_into_chunks_with_context,
         generate_translation_request,
+        translate_epub_file,
+        translate_text_file,
         API_ENDPOINT as DEFAULT_OLLAMA_API_ENDPOINT,
         DEFAULT_MODEL,
         MAIN_LINES_PER_CHUNK,
@@ -59,7 +63,8 @@ def health_check():
         "status": "ok",
         "message": "Translation API is running",
         "translate_module": "loaded",
-        "ollama_default_endpoint": DEFAULT_OLLAMA_API_ENDPOINT
+        "ollama_default_endpoint": DEFAULT_OLLAMA_API_ENDPOINT,
+        "supported_formats": ["txt", "epub"]
     })
 
 @app.route('/api/models', methods=['GET'])
@@ -81,7 +86,7 @@ def get_available_models():
                 "status": "ollama_connected",
                 "count": len(model_names)
             })
-    except requests.exceptions.RequestException as e: # More specific exception for connection errors
+    except requests.exceptions.RequestException as e:
         print(f"❌ Could not connect to Ollama at {ollama_base_from_ui}: {e}")
     except Exception as e:
         print(f"❌ Error retrieving models from {ollama_base_from_ui}: {e}")
@@ -94,7 +99,6 @@ def get_available_models():
         "error": f"Ollama is not accessible at {ollama_base_from_ui} or an error occurred. Verify that Ollama is running ('ollama serve') and the endpoint is correct."
     })
 
-
 @app.route('/api/config', methods=['GET'])
 def get_default_config():
     return jsonify({
@@ -104,14 +108,22 @@ def get_default_config():
         "timeout": REQUEST_TIMEOUT,
         "context_window": OLLAMA_NUM_CTX,
         "max_attempts": 2,
-        "retry_delay": 2
+        "retry_delay": 2,
+        "supported_formats": ["txt", "epub"]
     })
 
 @app.route('/api/translate', methods=['POST'])
 def start_translation_request():
     data = request.json
 
-    required_fields = ['text', 'source_language', 'target_language', 'model', 'api_endpoint', 'output_filename']
+    # For file uploads, handle differently
+    if 'file_path' in data:
+        # This is a file-based translation request
+        required_fields = ['file_path', 'source_language', 'target_language', 'model', 'api_endpoint', 'output_filename', 'file_type']
+    else:
+        # This is a text-based translation request
+        required_fields = ['text', 'source_language', 'target_language', 'model', 'api_endpoint', 'output_filename']
+    
     for field in required_fields:
         if field not in data or not data[field]:
             return jsonify({"error": f"Missing or empty field: {field}"}), 400
@@ -119,7 +131,6 @@ def start_translation_request():
     translation_id = f"trans_{int(time.time() * 1000)}"
 
     config = {
-        'text': data['text'],
         'source_language': data['source_language'],
         'target_language': data['target_language'],
         'model': data['model'],
@@ -131,6 +142,14 @@ def start_translation_request():
         'retry_delay': int(data.get('retry_delay', 2)),
         'output_filename': data['output_filename']
     }
+
+    # Handle file type
+    if 'file_path' in data:
+        config['file_path'] = data['file_path']
+        config['file_type'] = data['file_type']
+    else:
+        config['text'] = data['text']
+        config['file_type'] = 'txt'
 
     active_translations[translation_id] = {
         'status': 'queued',
@@ -156,6 +175,60 @@ def start_translation_request():
         "config_received": config
     })
 
+@app.route('/api/upload', methods=['POST'])
+def upload_file():
+    """Handle file uploads and store them temporarily"""
+    if 'file' not in request.files:
+        return jsonify({"error": "No file part"}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "No selected file"}), 400
+    
+    # Check file extension
+    filename = file.filename.lower()
+    if not (filename.endswith('.txt') or filename.endswith('.epub')):
+        return jsonify({"error": "Only .txt and .epub files are supported"}), 400
+    
+    # Create a temporary directory for uploads if it doesn't exist
+    upload_dir = os.path.join(OUTPUT_DIR, 'uploads')
+    if not os.path.exists(upload_dir):
+        os.makedirs(upload_dir)
+    
+    # Save the file with a unique name
+    timestamp = int(time.time() * 1000)
+    safe_filename = f"{timestamp}_{file.filename}"
+    file_path = os.path.join(upload_dir, safe_filename)
+    
+    try:
+        file.save(file_path)
+        
+        # For text files, read content
+        if filename.endswith('.txt'):
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            
+            return jsonify({
+                "success": True,
+                "file_path": file_path,
+                "filename": file.filename,
+                "file_type": "txt",
+                "content": content,
+                "size": os.path.getsize(file_path)
+            })
+        else:
+            # For EPUB files, just return the path
+            return jsonify({
+                "success": True,
+                "file_path": file_path,
+                "filename": file.filename,
+                "file_type": "epub",
+                "size": os.path.getsize(file_path)
+            })
+    
+    except Exception as e:
+        return jsonify({"error": f"Failed to save file: {str(e)}"}), 500
+
 def run_translation_async_wrapper(translation_id, config):
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -163,7 +236,7 @@ def run_translation_async_wrapper(translation_id, config):
         loop.run_until_complete(perform_actual_translation(translation_id, config))
     except Exception as e:
         error_msg = f"Uncaught major error in translation wrapper {translation_id}: {str(e)}"
-        print(error_msg) # Server log
+        print(error_msg)
         if translation_id in active_translations:
             active_translations[translation_id]['status'] = 'error'
             active_translations[translation_id]['error'] = error_msg
@@ -204,135 +277,173 @@ async def perform_actual_translation(translation_id, config):
             active_translations[translation_id]['stats'].update(new_stats)
             emit_update(translation_id, {'stats': active_translations[translation_id]['stats']})
 
-    full_translation_parts = []
-
     try:
         log_message("config_info", f"🚀 Starting translation ({translation_id}). Configuration: {config['source_language']} to {config['target_language']}, Model: {config['model']}")
         log_message("llm_endpoint_info", f"🔗 LLM Endpoint: {config['llm_api_endpoint']}")
         log_message("output_file_info", f"💾 Expected output file: {config['output_filename']}")
+        log_message("file_type_info", f"📄 File type: {config['file_type']}")
 
-        structured_chunks = split_text_into_chunks_with_context(config['text'], config['chunk_size'])
-        total_chunks = len(structured_chunks)
-
-        current_stats = active_translations[translation_id].get('stats', {})
-        current_stats.update({'total_chunks': total_chunks, 'completed_chunks': 0, 'failed_chunks': 0})
-        update_translation_stats(current_stats)
-
-
-        if total_chunks == 0 and config['text'].strip():
-            log_message("chunking_warn", "⚠️ Non-empty text but no chunks generated. Attempting global translation.")
-            structured_chunks.append({ "context_before": "", "main_content": config['text'], "context_after": "" })
-            total_chunks = 1
-            update_translation_stats({'total_chunks': total_chunks})
-        elif total_chunks == 0:
-            log_message("empty_text", "Empty input text. No translation needed.")
-            active_translations[translation_id]['status'] = 'completed'
-            active_translations[translation_id]['result'] = ""
-            update_translation_progress(100)
-            emit_update(translation_id, {'status': 'completed', 'result': "", 'output_filename': config['output_filename']})
-
-            try:
-                empty_filepath = os.path.join(OUTPUT_DIR, config['output_filename'])
-                with open(empty_filepath, 'w', encoding='utf-8') as f:
-                    f.write("")
-                active_translations[translation_id]['output_filepath'] = empty_filepath
-                log_message("empty_file_saved", f"Empty output file saved: {empty_filepath}")
-            except Exception as e:
-                log_message("empty_file_save_error", f"Error saving empty file: {str(e)}")
-            return
-
-        log_message("chunk_count", f"📊 Text divided into {total_chunks} chunks.")
-        last_successful_translation_context = ""
-
-        for i, chunk_data in enumerate(structured_chunks):
-            if active_translations[translation_id].get('interrupted', False):
-                log_message("interruption_detected_loop", "🛑 Interruption detected. Stopping before the next chunk.")
-                break
-            
-            chunk_num = i + 1
-            update_translation_progress( (i / total_chunks) * 100 )
-            main_content = chunk_data["main_content"]
-
-            if not main_content.strip():
-                log_message("chunk_skip", f"⏭️ Chunk {chunk_num}/{total_chunks}: Empty, skipped.")
-                full_translation_parts.append("")
-                current_stats = active_translations[translation_id]['stats'] 
-                current_stats['completed_chunks'] = current_stats.get('completed_chunks', 0) + 1
-                update_translation_stats(current_stats)
-                continue
-
-            log_message("chunk_process_start", f"🔄 Translating chunk {chunk_num}/{total_chunks}...")
-            translated_chunk_text = None
-            current_attempts = 0
-            
-            while current_attempts < config['max_attempts'] and translated_chunk_text is None:
-                current_attempts += 1
-                if current_attempts > 1:
-                    log_message("chunk_retry", f"🔁 Retrying chunk {chunk_num} ({current_attempts}/{config['max_attempts']})...")
-                    await asyncio.sleep(config['retry_delay'])
-                
-                translated_chunk_text = await generate_translation_request(
-                    main_content, chunk_data["context_before"], chunk_data["context_after"],
-                    last_successful_translation_context, config['source_language'], config['target_language'],
-                    config['model'], api_endpoint_param=config['llm_api_endpoint']
-                )
-
-            current_stats = active_translations[translation_id]['stats']
-            if translated_chunk_text is not None:
-                full_translation_parts.append(translated_chunk_text)
-                last_successful_translation_context = translated_chunk_text
-                current_stats['completed_chunks'] = current_stats.get('completed_chunks', 0) + 1
-                update_translation_stats(current_stats)
-                log_message("chunk_success", f"✅ Chunk {chunk_num} translated.")
-            else:
-                error_placeholder = f"[TRANSLATION ERROR CHUNK {chunk_num} AFTER {config['max_attempts']} ATTEMPTS]\n{main_content}\n[END CHUNK ERROR {chunk_num}]"
-                full_translation_parts.append(error_placeholder)
-                last_successful_translation_context = ""
-                current_stats['failed_chunks'] = current_stats.get('failed_chunks', 0) + 1
-                update_translation_stats(current_stats)
-                log_message("chunk_fail", f"❌ Failed to translate chunk {chunk_num} after {config['max_attempts']} attempts.")
-        
-        # --- Assembly and Saving ---
-        final_translation_result = "\n".join(full_translation_parts)
-        active_translations[translation_id]['result'] = final_translation_result
         output_filepath_on_server = os.path.join(OUTPUT_DIR, config['output_filename'])
-        
-        try:
+
+        # Handle different file types
+        if config['file_type'] == 'epub':
+            # For EPUB files, use the translate_epub_file function
+            log_message("epub_processing", "📚 Processing EPUB file...")
+            
+            # Create a temporary file for the input if text content is provided
+            if 'file_path' in config:
+                input_path = config['file_path']
+            else:
+                # This shouldn't happen for EPUB, but handle it gracefully
+                log_message("epub_error", "❌ EPUB translation requires a file path")
+                raise Exception("EPUB translation requires a file path")
+            
+            # Use the translate_epub_file function
+            await translate_epub_file(
+                input_path,
+                output_filepath_on_server,
+                config['source_language'],
+                config['target_language'],
+                config['model'],
+                config['chunk_size'],
+                config['llm_api_endpoint']
+            )
+            
+            # For EPUB, we can't easily extract the result text
+            active_translations[translation_id]['result'] = "[EPUB file translated - download to view]"
+            
+        else:
+            # For text files, use the existing logic
+            if 'text' in config:
+                text_to_translate = config['text']
+            elif 'file_path' in config:
+                with open(config['file_path'], 'r', encoding='utf-8') as f:
+                    text_to_translate = f.read()
+            else:
+                raise Exception("No text or file path provided")
+            
+            # Use the existing text translation logic
+            structured_chunks = split_text_into_chunks_with_context(text_to_translate, config['chunk_size'])
+            total_chunks = len(structured_chunks)
+
+            current_stats = active_translations[translation_id].get('stats', {})
+            current_stats.update({'total_chunks': total_chunks, 'completed_chunks': 0, 'failed_chunks': 0})
+            update_translation_stats(current_stats)
+
+            if total_chunks == 0 and text_to_translate.strip():
+                log_message("chunking_warn", "⚠️ Non-empty text but no chunks generated. Attempting global translation.")
+                structured_chunks.append({ "context_before": "", "main_content": text_to_translate, "context_after": "" })
+                total_chunks = 1
+                update_translation_stats({'total_chunks': total_chunks})
+            elif total_chunks == 0:
+                log_message("empty_text", "Empty input text. No translation needed.")
+                active_translations[translation_id]['status'] = 'completed'
+                active_translations[translation_id]['result'] = ""
+                update_translation_progress(100)
+                emit_update(translation_id, {'status': 'completed', 'result': "", 'output_filename': config['output_filename']})
+                
+                with open(output_filepath_on_server, 'w', encoding='utf-8') as f:
+                    f.write("")
+                active_translations[translation_id]['output_filepath'] = output_filepath_on_server
+                return
+
+            log_message("chunk_count", f"📊 Text divided into {total_chunks} chunks.")
+            
+            full_translation_parts = []
+            last_successful_translation_context = ""
+
+            for i, chunk_data in enumerate(structured_chunks):
+                if active_translations[translation_id].get('interrupted', False):
+                    log_message("interruption_detected_loop", "🛑 Interruption detected. Stopping before the next chunk.")
+                    break
+                
+                chunk_num = i + 1
+                update_translation_progress((i / total_chunks) * 100)
+                main_content = chunk_data["main_content"]
+
+                if not main_content.strip():
+                    log_message("chunk_skip", f"⏭️ Chunk {chunk_num}/{total_chunks}: Empty, skipped.")
+                    full_translation_parts.append("")
+                    current_stats = active_translations[translation_id]['stats'] 
+                    current_stats['completed_chunks'] = current_stats.get('completed_chunks', 0) + 1
+                    update_translation_stats(current_stats)
+                    continue
+
+                log_message("chunk_process_start", f"🔄 Translating chunk {chunk_num}/{total_chunks}...")
+                translated_chunk_text = None
+                current_attempts = 0
+                
+                while current_attempts < config['max_attempts'] and translated_chunk_text is None:
+                    current_attempts += 1
+                    if current_attempts > 1:
+                        log_message("chunk_retry", f"🔁 Retrying chunk {chunk_num} ({current_attempts}/{config['max_attempts']})...")
+                        await asyncio.sleep(config['retry_delay'])
+                    
+                    translated_chunk_text = await generate_translation_request(
+                        main_content, chunk_data["context_before"], chunk_data["context_after"],
+                        last_successful_translation_context, config['source_language'], config['target_language'],
+                        config['model'], api_endpoint_param=config['llm_api_endpoint']
+                    )
+
+                current_stats = active_translations[translation_id]['stats']
+                if translated_chunk_text is not None:
+                    full_translation_parts.append(translated_chunk_text)
+                    last_successful_translation_context = translated_chunk_text
+                    current_stats['completed_chunks'] = current_stats.get('completed_chunks', 0) + 1
+                    update_translation_stats(current_stats)
+                    log_message("chunk_success", f"✅ Chunk {chunk_num} translated.")
+                else:
+                    error_placeholder = f"[TRANSLATION ERROR CHUNK {chunk_num} AFTER {config['max_attempts']} ATTEMPTS]\n{main_content}\n[END CHUNK ERROR {chunk_num}]"
+                    full_translation_parts.append(error_placeholder)
+                    last_successful_translation_context = ""
+                    current_stats['failed_chunks'] = current_stats.get('failed_chunks', 0) + 1
+                    update_translation_stats(current_stats)
+                    log_message("chunk_fail", f"❌ Failed to translate chunk {chunk_num} after {config['max_attempts']} attempts.")
+            
+            # Assembly and Saving for text files
+            final_translation_result = "\n".join(full_translation_parts)
+            active_translations[translation_id]['result'] = final_translation_result
+            
             with open(output_filepath_on_server, 'w', encoding='utf-8') as f:
                 f.write(final_translation_result)
-            log_message("save_success", f"💾 Result saved: {output_filepath_on_server}")
-            active_translations[translation_id]['output_filepath'] = output_filepath_on_server
-        except Exception as e:
-            save_error_msg = f"❌ Error saving file '{output_filepath_on_server}': {str(e)}"
-            log_message("save_fail", save_error_msg)
-            active_translations[translation_id]['output_filepath'] = None
-            active_translations[translation_id]['status'] = 'error'
-            active_translations[translation_id]['error'] = active_translations[translation_id].get('error', '') + f"; Save failed: {str(e)}"
 
-        # --- Finalizing status ---
+        # Common finalization for both file types
+        log_message("save_success", f"💾 Result saved: {output_filepath_on_server}")
+        active_translations[translation_id]['output_filepath'] = output_filepath_on_server
+
+        # Finalizing status
         elapsed_time = time.time() - active_translations[translation_id]['stats'].get('start_time', time.time())
         update_translation_stats({'elapsed_time': elapsed_time})
 
-        final_status_payload = {'result': final_translation_result, 'output_filename': config['output_filename']}
+        final_status_payload = {
+            'result': active_translations[translation_id]['result'],
+            'output_filename': config['output_filename'],
+            'file_type': config['file_type']
+        }
+        
         current_job_status = active_translations[translation_id].get('status', 'unknown')
 
         if active_translations[translation_id].get('interrupted', False):
             active_translations[translation_id]['status'] = 'interrupted'
             log_message("summary_interrupted", f"🛑 Translation interrupted. Partial result saved. Time: {elapsed_time:.2f}s.")
             final_status_payload['status'] = 'interrupted'
-        elif current_job_status != 'error': # If not already an error (e.g. from saving)
+        elif current_job_status != 'error':
              active_translations[translation_id]['status'] = 'completed'
              log_message("summary_completed", f"✅ Translation completed. Time: {elapsed_time:.2f}s.")
              final_status_payload['status'] = 'completed'
-        else: # Was already an error
+        else:
             log_message("summary_error", f"❌ Translation completed with errors. Time: {elapsed_time:.2f}s.")
             final_status_payload['status'] = 'error'
             final_status_payload['error'] = active_translations[translation_id].get('error', 'Unknown error during finalization.')
 
         update_translation_progress(100)
-        completed_chunks_final = active_translations[translation_id]['stats'].get('completed_chunks', 0)
-        failed_chunks_final = active_translations[translation_id]['stats'].get('failed_chunks', 0)
-        log_message("summary_stats", f"📊 Chunks: {completed_chunks_final} processed (successful/skipped), {failed_chunks_final} failed out of {total_chunks} total.")
+        
+        if config['file_type'] == 'txt':
+            completed_chunks_final = active_translations[translation_id]['stats'].get('completed_chunks', 0)
+            failed_chunks_final = active_translations[translation_id]['stats'].get('failed_chunks', 0)
+            total_chunks = active_translations[translation_id]['stats'].get('total_chunks', 0)
+            log_message("summary_stats", f"📊 Chunks: {completed_chunks_final} processed (successful/skipped), {failed_chunks_final} failed out of {total_chunks} total.")
+        
         emit_update(translation_id, final_status_payload)
 
     except Exception as e:
@@ -341,26 +452,12 @@ async def perform_actual_translation(translation_id, config):
         if translation_id in active_translations:
             active_translations[translation_id]['status'] = 'error'
             active_translations[translation_id]['error'] = critical_error_msg
-            if full_translation_parts:
-                partial_result_on_crit_error = "\n".join(full_translation_parts)
-                active_translations[translation_id]['result'] = partial_result_on_crit_error
-                crit_err_filename = f"CRITICAL_ERROR_{config.get('output_filename', translation_id + '.txt')}"
-                crit_err_filepath = os.path.join(OUTPUT_DIR, crit_err_filename)
-                try:
-                    with open(crit_err_filepath, 'w', encoding='utf-8') as f_err: f_err.write(partial_result_on_crit_error)
-                    log_message("save_partial_on_crit_error", f"💾 Partial save on critical error: {crit_err_filepath}")
-                    active_translations[translation_id]['output_filepath'] = crit_err_filepath
-                except Exception as save_e:
-                    log_message("save_partial_on_crit_error_fail", f"❌ Failed partial save on critical error: {str(save_e)}")
             
             emit_update(translation_id, {
                 'error': critical_error_msg,
                 'status': 'error',
                 'result': active_translations[translation_id].get('result')
             })
-        else:
-            print(f"CRITICAL ERROR FOR UNTRACKED ID {translation_id}: {critical_error_msg}")
-
 
 def emit_update(translation_id, data_to_emit):
     if translation_id in active_translations:
@@ -389,7 +486,7 @@ def get_translation_job_status(translation_id):
             'start_time': stats.get('start_time'),
             'elapsed_time': elapsed
         },
-        "logs": job_data.get('logs', [])[-100:], # Last 100 logs
+        "logs": job_data.get('logs', [])[-100:],
         "result_preview": (job_data.get('result')[:1000] + '...' if len(job_data.get('result', '')) > 1000 else job_data.get('result')) if job_data.get('result') else None,
         "error": job_data.get('error'),
         "config": job_data.get('config'),
@@ -435,10 +532,14 @@ def list_all_translations():
     summary_list = []
     for tid, data in active_translations.items():
         summary_list.append({
-            "translation_id": tid, "status": data.get('status'), "progress": data.get('progress'),
+            "translation_id": tid, 
+            "status": data.get('status'), 
+            "progress": data.get('progress'),
             "start_time": data.get('stats', {}).get('start_time'),
-            "output_filename": data.get('config', {}).get('output_filename')})
-    return jsonify({"translations": sorted(summary_list, key=lambda x: x.get('start_time', 0), reverse=True)}) # Sort by most recent
+            "output_filename": data.get('config', {}).get('output_filename'),
+            "file_type": data.get('config', {}).get('file_type', 'txt')
+        })
+    return jsonify({"translations": sorted(summary_list, key=lambda x: x.get('start_time', 0), reverse=True)})
 
 @socketio.on('connect')
 def handle_websocket_connect():
@@ -459,5 +560,6 @@ if __name__ == '__main__':
     print(f"   - Default Ollama Endpoint (translate.py): {DEFAULT_OLLAMA_API_ENDPOINT}")
     print(f"   - Interface: http://localhost:5000 (or http://<your_ip>:5000)")
     print(f"   - API: http://localhost:5000/api/")
+    print(f"   - Supported formats: .txt and .epub")
     print("\n💡 Press Ctrl+C to stop the server\n")
     socketio.run(app, debug=False, host='0.0.0.0', port=5000)
