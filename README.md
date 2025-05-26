@@ -238,6 +238,7 @@ structured_prompt = f"""
       - Large (40-60): Better context but slower, may hit limits
   - **Context Window**: Match your model's capabilities
   - **EPUB Files**:
+      - The script preserves the structure of the EPUB file. The original quality of the structure is important, because if line breaks are present in the middle of a sentence, it will be cut off in the translation chunk, causing translation errors.
       - The chunk size applies to lines within HTML content blocks.
       - For best results, use a chunk size that balances speed and contextual understanding.
   - **For Books**: Use 25-40 lines per chunk for best balance
