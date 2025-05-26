@@ -1,6 +1,6 @@
 """
 Flask API for the Translation Interface
-Works with translate.py - Now supports EPUB files
+Works with translate.py - Now supports EPUB files with proper progress tracking
 """
 
 import json
@@ -19,6 +19,10 @@ import zipfile
 
 # Import the original translation script
 try:
+    import translate
+    # Enable debug mode for web interface
+    translate.DEBUG_MODE = True
+    
     from translate import (
         split_text_into_chunks_with_context,
         generate_translation_request,
@@ -28,9 +32,12 @@ try:
         DEFAULT_MODEL,
         MAIN_LINES_PER_CHUNK,
         REQUEST_TIMEOUT,
-        OLLAMA_NUM_CTX
+        OLLAMA_NUM_CTX,
+        MAX_TRANSLATION_ATTEMPTS,
+        RETRY_DELAY_SECONDS
     )
     print("✅ 'translate' module imported successfully")
+    print("✅ Debug mode ENABLED - LLM requests will be displayed in console")
 except ImportError as e:
     print("❌ Error importing 'translate' module:")
     print(f"   {e}")
@@ -107,8 +114,8 @@ def get_default_config():
         "chunk_size": MAIN_LINES_PER_CHUNK,
         "timeout": REQUEST_TIMEOUT,
         "context_window": OLLAMA_NUM_CTX,
-        "max_attempts": 2,
-        "retry_delay": 2,
+        "max_attempts": MAX_TRANSLATION_ATTEMPTS,
+        "retry_delay": RETRY_DELAY_SECONDS,
         "supported_formats": ["txt", "epub"]
     })
 
@@ -138,8 +145,8 @@ def start_translation_request():
         'llm_api_endpoint': data['api_endpoint'],
         'request_timeout': int(data.get('timeout', REQUEST_TIMEOUT)),
         'context_window': int(data.get('context_window', OLLAMA_NUM_CTX)),
-        'max_attempts': int(data.get('max_attempts', 2)),
-        'retry_delay': int(data.get('retry_delay', 2)),
+        'max_attempts': int(data.get('max_attempts', MAX_TRANSLATION_ATTEMPTS)),
+        'retry_delay': int(data.get('retry_delay', RETRY_DELAY_SECONDS)),
         'output_filename': data['output_filename']
     }
 
@@ -277,6 +284,10 @@ async def perform_actual_translation(translation_id, config):
             active_translations[translation_id]['stats'].update(new_stats)
             emit_update(translation_id, {'stats': active_translations[translation_id]['stats']})
 
+    def epub_progress_callback(progress_percent):
+        """Callback for EPUB translation progress"""
+        update_translation_progress(progress_percent)
+        
     try:
         log_message("config_info", f"🚀 Starting translation ({translation_id}). Configuration: {config['source_language']} to {config['target_language']}, Model: {config['model']}")
         log_message("llm_endpoint_info", f"🔗 LLM Endpoint: {config['llm_api_endpoint']}")
@@ -298,7 +309,7 @@ async def perform_actual_translation(translation_id, config):
                 log_message("epub_error", "❌ EPUB translation requires a file path")
                 raise Exception("EPUB translation requires a file path")
             
-            # Use the translate_epub_file function
+            # Use the translate_epub_file function with progress callback
             await translate_epub_file(
                 input_path,
                 output_filepath_on_server,
@@ -306,7 +317,12 @@ async def perform_actual_translation(translation_id, config):
                 config['target_language'],
                 config['model'],
                 config['chunk_size'],
-                config['llm_api_endpoint']
+                config['llm_api_endpoint'],
+                config['request_timeout'],
+                config['context_window'],
+                config['max_attempts'],
+                config['retry_delay'],
+                epub_progress_callback  # Pass the progress callback
             )
             
             # For EPUB, we can't easily extract the result text
@@ -370,6 +386,20 @@ async def perform_actual_translation(translation_id, config):
                     continue
 
                 log_message("chunk_process_start", f"🔄 Translating chunk {chunk_num}/{total_chunks}...")
+                
+                # First, get the prompt preview
+                _, prompt_preview = await generate_translation_request(
+                    main_content, chunk_data["context_before"], chunk_data["context_after"],
+                    last_successful_translation_context, config['source_language'], config['target_language'],
+                    config['model'], api_endpoint_param=config['llm_api_endpoint'],
+                    timeout=config['request_timeout'], context_window=config['context_window'],
+                    return_prompt=True
+                )
+                
+                # Log the prompt preview
+                if prompt_preview:
+                    log_message("llm_prompt", f"📝 LLM Prompt preview: {prompt_preview}")
+                
                 translated_chunk_text = None
                 current_attempts = 0
                 
@@ -379,10 +409,16 @@ async def perform_actual_translation(translation_id, config):
                         log_message("chunk_retry", f"🔁 Retrying chunk {chunk_num} ({current_attempts}/{config['max_attempts']})...")
                         await asyncio.sleep(config['retry_delay'])
                     
+                    # Check for interruption before each attempt
+                    if active_translations[translation_id].get('interrupted', False):
+                        log_message("interruption_detected_attempt", "🛑 Interruption detected during translation attempt.")
+                        break
+                    
                     translated_chunk_text = await generate_translation_request(
                         main_content, chunk_data["context_before"], chunk_data["context_after"],
                         last_successful_translation_context, config['source_language'], config['target_language'],
-                        config['model'], api_endpoint_param=config['llm_api_endpoint']
+                        config['model'], api_endpoint_param=config['llm_api_endpoint'],
+                        timeout=config['request_timeout'], context_window=config['context_window']
                     )
 
                 current_stats = active_translations[translation_id]['stats']
@@ -393,19 +429,34 @@ async def perform_actual_translation(translation_id, config):
                     update_translation_stats(current_stats)
                     log_message("chunk_success", f"✅ Chunk {chunk_num} translated.")
                 else:
-                    error_placeholder = f"[TRANSLATION ERROR CHUNK {chunk_num} AFTER {config['max_attempts']} ATTEMPTS]\n{main_content}\n[END CHUNK ERROR {chunk_num}]"
+                    # If interrupted, add original content
+                    if active_translations[translation_id].get('interrupted', False):
+                        error_placeholder = f"[INTERRUPTED AT CHUNK {chunk_num}]\n{main_content}\n[END INTERRUPTED CHUNK {chunk_num}]"
+                    else:
+                        error_placeholder = f"[TRANSLATION ERROR CHUNK {chunk_num} AFTER {config['max_attempts']} ATTEMPTS]\n{main_content}\n[END CHUNK ERROR {chunk_num}]"
                     full_translation_parts.append(error_placeholder)
                     last_successful_translation_context = ""
                     current_stats['failed_chunks'] = current_stats.get('failed_chunks', 0) + 1
                     update_translation_stats(current_stats)
-                    log_message("chunk_fail", f"❌ Failed to translate chunk {chunk_num} after {config['max_attempts']} attempts.")
+                    
+                    if active_translations[translation_id].get('interrupted', False):
+                        log_message("chunk_interrupted", f"⏸️ Chunk {chunk_num} interrupted.")
+                        break
+                    else:
+                        log_message("chunk_fail", f"❌ Failed to translate chunk {chunk_num} after {config['max_attempts']} attempts.")
             
-            # Assembly and Saving for text files
+            # Assembly and Saving for text files - ALWAYS save, even if interrupted
             final_translation_result = "\n".join(full_translation_parts)
             active_translations[translation_id]['result'] = final_translation_result
             
-            with open(output_filepath_on_server, 'w', encoding='utf-8') as f:
-                f.write(final_translation_result)
+            # Save the file regardless of interruption status
+            try:
+                with open(output_filepath_on_server, 'w', encoding='utf-8') as f:
+                    f.write(final_translation_result)
+                log_message("save_success", f"💾 Result saved: {output_filepath_on_server}")
+            except Exception as save_error:
+                log_message("save_error", f"❌ Error saving file: {str(save_error)}")
+                raise save_error
 
         # Common finalization for both file types
         log_message("save_success", f"💾 Result saved: {output_filepath_on_server}")

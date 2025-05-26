@@ -117,7 +117,18 @@ function handleTranslationUpdate(data) {
          // This is expected when a file starts processing
          document.getElementById('progressSection').classList.remove('hidden');
          document.getElementById('currentFileProgressTitle').textContent = `📊 Translating: ${currentFile.name}`;
-         showMessage(`Translation in progress for ${currentFile.name}...`, 'info');
+         
+         // For EPUB files, show a specific message
+         if (currentFile.fileType === 'epub') {
+             showMessage(`Translating EPUB file: ${currentFile.name}... This may take some time.`, 'info');
+             // Hide chunk stats for EPUB
+             document.getElementById('statsGrid').style.display = 'none';
+         } else {
+             showMessage(`Translation in progress for ${currentFile.name}...`, 'info');
+             // Show chunk stats for text files
+             document.getElementById('statsGrid').style.display = '';
+         }
+         
          updateFileStatusInList(currentFile.name, 'Processing');
     }
 }
@@ -175,20 +186,19 @@ async function loadAvailableModels() {
                 modelSelect.appendChild(option);
             });
             addLog(`✅ ${data.count} LLM model(s) loaded. Default: ${data.default}`);
-            if (data.default && !data.models.includes(data.default)) {
-                showMessage(`ℹ️ Default model '${data.default}' (from server) not found. Using '${data.models[0]}'.`, 'info');
-            }
         } else {
-            const errorMessage = data.error || (currentApiEp.includes('localhost') || currentApiEp.includes('127.0.0.1') ?
-                                '⚠️ No LLM models found. Ensure Ollama is running, accessible at the specified endpoint, and models are installed (e.g., ollama pull mistral).' :
-                                '⚠️ No LLM models found. Ensure Ollama is accessible at the specified endpoint and models are installed.');
-            showMessage(errorMessage, 'error');
-            modelSelect.innerHTML = '<option value="">No models available</option>';
+            // Fixed: Don't show default model names when Ollama is not connected
+            const errorMessage = data.error || 'No LLM models available. Ensure Ollama is running and accessible.';
+            showMessage(`⚠️ ${errorMessage}`, 'error');
+            
+            // Clear the select and add a placeholder
+            modelSelect.innerHTML = '<option value="">No models available - Check Ollama connection</option>';
+            addLog(`⚠️ No models available from Ollama at ${currentApiEp}`);
         }
     } catch (error) {
         showMessage(`❌ Error fetching models: ${error.message}`, 'error');
         addLog(`❌ Failed to retrieve model list: ${error.message}`);
-        modelSelect.innerHTML = '<option value="">Error loading models</option>';
+        modelSelect.innerHTML = '<option value="">Error loading models - Check Ollama</option>';
     }
 }
 
@@ -371,8 +381,32 @@ function showMessage(text, type) {
 }
 function addLog(message) {
     const logContainer = document.getElementById('logContainer');
-    logContainer.innerHTML += `[${new Date().toLocaleTimeString()}] ${message}\n`;
+    const timestamp = new Date().toLocaleTimeString();
+    
+    // Check if it's a LLM prompt and format it specially
+    if (message.includes('📝 LLM Prompt preview:')) {
+        const promptText = message.replace('📝 LLM Prompt preview:', '').trim();
+        logContainer.innerHTML += `<div class="log-entry log-prompt">
+            <span class="log-timestamp">[${timestamp}]</span> 
+            <span class="log-label">📝 LLM Prompt:</span>
+            <pre class="prompt-content">${escapeHtml(promptText)}</pre>
+        </div>`;
+    } else {
+        logContainer.innerHTML += `<div class="log-entry">
+            <span class="log-timestamp">[${timestamp}]</span> ${message}
+        </div>`;
+    }
+    
     logContainer.scrollTop = logContainer.scrollHeight;
+}
+
+function escapeHtml(unsafe) {
+    return unsafe
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
 }
 
 function earlyValidationFail(message) {
@@ -460,6 +494,7 @@ async function processNextFileInQueue() {
     let targetLanguageVal = document.getElementById('targetLang').value;
     if (targetLanguageVal === 'Other') targetLanguageVal = document.getElementById('customTargetLang').value.trim();
 
+    // Get all advanced settings
     const config = {
         source_language: sourceLanguageVal,
         target_language: targetLanguageVal,

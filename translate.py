@@ -17,11 +17,14 @@ DEFAULT_MODEL = "mistral-small:24b"
 MAIN_LINES_PER_CHUNK = 25
 REQUEST_TIMEOUT = 60
 OLLAMA_NUM_CTX = 2048
-SENTENCE_TERMINATORS = tuple(list(".!?") + ['."', '?"', '!"', '.”', ".'", "?'", "!'", ":", ".)"])
+SENTENCE_TERMINATORS = tuple(list(".!?") + ['."', '?"', '!"', '."', ".'", "?'", "!'", ":", ".)"])
 MAX_TRANSLATION_ATTEMPTS = 2
 RETRY_DELAY_SECONDS = 2
 TRANSLATE_TAG_IN = "[START]"
 TRANSLATE_TAG_OUT = "[END]"
+
+# Global debug flag
+DEBUG_MODE = False
 
 NAMESPACES = {
     'opf': 'http://www.idpf.org/2007/opf',
@@ -147,7 +150,8 @@ def split_text_into_chunks_with_context(text, main_lines_per_chunk_target):
 
 async def generate_translation_request(main_content, context_before, context_after, previous_translation_context,
                                        source_language="English", target_language="French", model=DEFAULT_MODEL,
-                                       api_endpoint_param=API_ENDPOINT):
+                                       api_endpoint_param=API_ENDPOINT, timeout=REQUEST_TIMEOUT, context_window=OLLAMA_NUM_CTX,
+                                       return_prompt=False):
     full_raw_response = ""
     source_lang = source_language.upper()
 
@@ -192,16 +196,22 @@ async def generate_translation_request(main_content, context_before, context_aft
         "prompt": structured_prompt, 
         "stream": False,
         "options": {
-            "num_ctx": OLLAMA_NUM_CTX
+            "num_ctx": context_window
         }
     }
 
-    print("\n--- START LLM Request ---")
-    print(structured_prompt)
-    #print(json.dumps(payload, indent=2, ensure_ascii=False))
-    print("\n--- END LLM Request ---")
+    if DEBUG_MODE:
+        print("\n--- START LLM Request ---")
+        print(structured_prompt)
+        print("\n--- END LLM Request ---")
+    
+    # Return prompt if requested (for web interface)
+    if return_prompt:
+        prompt_preview = structured_prompt[:500] + "..." if len(structured_prompt) > 500 else structured_prompt
+        return None, prompt_preview
+    
     try:
-        response = requests.post(api_endpoint_param, json=payload, timeout=REQUEST_TIMEOUT)
+        response = requests.post(api_endpoint_param, json=payload, timeout=timeout)
         response.raise_for_status()
         json_response = response.json()
         full_raw_response = json_response.get("response", "")
@@ -211,7 +221,7 @@ async def generate_translation_request(main_content, context_before, context_aft
             return None
             
     except requests.exceptions.Timeout as e:
-        tqdm.write(f"\nLLM API request timed out after {REQUEST_TIMEOUT}s: {e}")
+        tqdm.write(f"\nLLM API request timed out after {timeout}s: {e}")
         return None
     except requests.exceptions.HTTPError as e:
         tqdm.write(f"\nLLM API HTTP error: {e.response.status_code} - {e.response.reason}. Response: {e.response.text[:500]}...")
@@ -234,13 +244,16 @@ async def generate_translation_request(main_content, context_before, context_aft
         return extracted_translation
     else:
         tqdm.write(f"\nWARNING: Tags {TRANSLATE_TAG_IN}...{TRANSLATE_TAG_OUT} not found in LLM response.")
-        tqdm.write(f"Full raw response was: {full_raw_response[:500]}...")
+        if DEBUG_MODE:
+            tqdm.write(f"Full raw response was: {full_raw_response[:500]}...")
         return None
 
 async def translate_text_file(input_filepath, output_filepath,
                                source_language="English", target_language="French",
                                model_name=DEFAULT_MODEL, chunk_target_lines_cli=MAIN_LINES_PER_CHUNK,
-                               cli_api_endpoint=API_ENDPOINT):
+                               cli_api_endpoint=API_ENDPOINT, timeout=REQUEST_TIMEOUT, 
+                               context_window=OLLAMA_NUM_CTX, max_attempts=MAX_TRANSLATION_ATTEMPTS,
+                               retry_delay=RETRY_DELAY_SECONDS):
     if not os.path.exists(input_filepath):
         print(f"Error: Input file '{input_filepath}' not found.")
         return
@@ -286,11 +299,11 @@ async def translate_text_file(input_filepath, output_filepath,
 
         translated_chunk_text = None
         current_attempts = 0
-        while current_attempts < MAX_TRANSLATION_ATTEMPTS and translated_chunk_text is None:
+        while current_attempts < max_attempts and translated_chunk_text is None:
             current_attempts += 1
             if current_attempts > 1:
-                tqdm.write(f"\nRetrying chunk {i+1}/{total_chunks} (attempt {current_attempts}/{MAX_TRANSLATION_ATTEMPTS})...")
-                await asyncio.sleep(RETRY_DELAY_SECONDS)
+                tqdm.write(f"\nRetrying chunk {i+1}/{total_chunks} (attempt {current_attempts}/{max_attempts})...")
+                await asyncio.sleep(retry_delay)
 
             translated_chunk_text = await generate_translation_request(
                 main_content_to_translate,
@@ -300,7 +313,9 @@ async def translate_text_file(input_filepath, output_filepath,
                 source_language,
                 target_language,
                 model_name,
-                api_endpoint_param=cli_api_endpoint
+                cli_api_endpoint,
+                timeout,
+                context_window
             )
 
         if translated_chunk_text is not None:
@@ -310,8 +325,14 @@ async def translate_text_file(input_filepath, output_filepath,
                 last_successful_llm_context = " ".join(words[-150:])
             else:
                 last_successful_llm_context = translated_chunk_text
+            
+            # Progress info after each chunk
+            if not DEBUG_MODE:
+                completed = i + 1
+                percent = (completed / total_chunks) * 100
+                tqdm.write(f"Progress: {completed}/{total_chunks} chunks ({percent:.1f}%)")
         else:
-            tqdm.write(f"\nError translating/extracting chunk {i+1} after {MAX_TRANSLATION_ATTEMPTS} attempts. Original content preserved with error tags.")
+            tqdm.write(f"\nError translating/extracting chunk {i+1} after {max_attempts} attempts. Original content preserved with error tags.")
             error_placeholder = f"[TRANSLATION_ERROR CHUNK {i+1}]\n{main_content_to_translate}\n[/TRANSLATION_ERROR CHUNK {i+1}]"
             full_translation_parts.append(error_placeholder)
             last_successful_llm_context = ""
@@ -324,7 +345,9 @@ async def translate_text_file(input_filepath, output_filepath,
     except Exception as e:
         print(f"Error saving output file: {e}")
 
-async def translate_text_with_chunking(text_to_translate, source_language, target_language, model_name, cli_api_endpoint, chunk_target_lines, previous_llm_context=""):
+async def translate_text_with_chunking(text_to_translate, source_language, target_language, model_name, 
+                                      cli_api_endpoint, chunk_target_lines, previous_llm_context="",
+                                      timeout=REQUEST_TIMEOUT, context_window=OLLAMA_NUM_CTX):
     if not text_to_translate.strip():
         return text_to_translate 
 
@@ -333,7 +356,8 @@ async def translate_text_with_chunking(text_to_translate, source_language, targe
     if not structured_chunks:
         translated_text_segment = await generate_translation_request(
             text_to_translate, "", "", previous_llm_context,
-            source_language, target_language, model_name, api_endpoint_param=cli_api_endpoint
+            source_language, target_language, model_name, api_endpoint_param=cli_api_endpoint,
+            timeout=timeout, context_window=context_window
         )
         return translated_text_segment if translated_text_segment is not None else text_to_translate
 
@@ -352,7 +376,8 @@ async def translate_text_with_chunking(text_to_translate, source_language, targe
 
         translated_segment = await generate_translation_request(
             main_content, context_before_for_llm, context_after_for_llm, current_sub_chunk_llm_context, 
-            source_language, target_language, model_name, api_endpoint_param=cli_api_endpoint
+            source_language, target_language, model_name, api_endpoint_param=cli_api_endpoint,
+            timeout=timeout, context_window=context_window
         )
 
         if translated_segment is not None:
@@ -370,7 +395,10 @@ async def translate_text_with_chunking(text_to_translate, source_language, targe
     final_translation = "\n".join(translated_parts)
     return final_translation if final_translation.strip() or text_to_translate.strip() == "" else text_to_translate
 
-async def translate_element_preserve_structure(element, source_language, target_language, model_name, cli_api_endpoint, chunk_target_lines=MAIN_LINES_PER_CHUNK, previous_llm_context=""):
+async def translate_element_preserve_structure(element, source_language, target_language, model_name, 
+                                             cli_api_endpoint, chunk_target_lines=MAIN_LINES_PER_CHUNK, 
+                                             previous_llm_context="", timeout=REQUEST_TIMEOUT, 
+                                             context_window=OLLAMA_NUM_CTX):
     if element.tag in ['{http://www.w3.org/1999/xhtml}script', 
                         '{http://www.w3.org/1999/xhtml}style',
                         '{http://www.w3.org/1999/xhtml}meta',
@@ -398,7 +426,8 @@ async def translate_element_preserve_structure(element, source_language, target_
                 block_text_content.strip(),
                 source_language, target_language, model_name,
                 cli_api_endpoint, chunk_target_lines,
-                current_element_overall_context
+                current_element_overall_context,
+                timeout, context_window
             )
             if translated_block is not None and translated_block.strip() != block_text_content.strip() : 
                 element.text = translated_block
@@ -423,7 +452,8 @@ async def translate_element_preserve_structure(element, source_language, target_
             
             translated = await translate_text_with_chunking(
                 text_to_translate, source_language, target_language, model_name,
-                cli_api_endpoint, chunk_target_lines, current_element_overall_context
+                cli_api_endpoint, chunk_target_lines, current_element_overall_context,
+                timeout, context_window
             )
             if translated is not None and translated != text_to_translate:
                 element.text = leading_space + translated + trailing_space
@@ -437,7 +467,8 @@ async def translate_element_preserve_structure(element, source_language, target_
     for child in element:
         current_element_overall_context = await translate_element_preserve_structure(
             child, source_language, target_language, model_name, 
-            cli_api_endpoint, chunk_target_lines, current_element_overall_context
+            cli_api_endpoint, chunk_target_lines, current_element_overall_context,
+            timeout, context_window
         )
     
     if element.tail:
@@ -449,7 +480,8 @@ async def translate_element_preserve_structure(element, source_language, target_
 
             translated_tail = await translate_text_with_chunking(
                 tail_to_translate, source_language, target_language, model_name,
-                cli_api_endpoint, chunk_target_lines, current_element_overall_context
+                cli_api_endpoint, chunk_target_lines, current_element_overall_context,
+                timeout, context_window
             )
             if translated_tail is not None and translated_tail != tail_to_translate:
                 element.tail = leading_space_tail + translated_tail + trailing_space_tail
@@ -465,7 +497,9 @@ async def translate_element_preserve_structure(element, source_language, target_
 async def translate_epub_file(input_filepath, output_filepath,
                                source_language="English", target_language="French",
                                model_name=DEFAULT_MODEL, chunk_target_lines_arg=MAIN_LINES_PER_CHUNK,
-                               cli_api_endpoint=API_ENDPOINT):
+                               cli_api_endpoint=API_ENDPOINT, timeout=REQUEST_TIMEOUT,
+                               context_window=OLLAMA_NUM_CTX, max_attempts=MAX_TRANSLATION_ATTEMPTS,
+                               retry_delay=RETRY_DELAY_SECONDS, progress_callback=None):
     if not os.path.exists(input_filepath):
         print(f"Error: Input file '{input_filepath}' not found.")
         return
@@ -507,12 +541,19 @@ async def translate_epub_file(input_filepath, output_filepath,
             
             opf_dir = os.path.dirname(opf_path)
             last_processed_llm_chapter_context = "" 
+            total_chapters = len(content_files_hrefs)
 
             for idx, content_href in enumerate(tqdm(content_files_hrefs, desc="Translating EPUB chapters", unit="chapter")):
                 file_path_abs = os.path.join(opf_dir, content_href)
                 if not os.path.exists(file_path_abs):
                     tqdm.write(f"Warning: File {content_href} not found at {file_path_abs}, skipping.")
                     continue
+                
+                # Send progress update if callback is provided
+                if progress_callback:
+                    progress_percent = (idx / total_chapters) * 100
+                    progress_callback(progress_percent)
+                
                 try:
                     with open(file_path_abs, 'r', encoding='utf-8') as f_chap:
                         chap_str_content = f_chap.read()
@@ -522,11 +563,12 @@ async def translate_epub_file(input_filepath, output_filepath,
                     body_el = doc_chap_root.find('.//{http://www.w3.org/1999/xhtml}body')
 
                     if body_el is not None:
-                        tqdm.write(f"\nTranslating chapter {idx+1}/{len(content_files_hrefs)}: {content_href}")
+                        tqdm.write(f"\nTranslating chapter {idx+1}/{total_chapters}: {content_href}")
                         last_processed_llm_chapter_context = await translate_element_preserve_structure(
                             body_el, source_language, target_language, model_name, 
                             cli_api_endpoint, chunk_target_lines_arg, 
-                            last_processed_llm_chapter_context
+                            last_processed_llm_chapter_context,
+                            timeout, context_window
                         )
                     
                     with open(file_path_abs, 'wb') as f_chap_out:
@@ -536,6 +578,10 @@ async def translate_epub_file(input_filepath, output_filepath,
                     tqdm.write(f"XML Syntax Error in {content_href}: {e_xml}. Chapter skipped.")
                 except Exception as e_chap:
                     tqdm.write(f"Error processing chapter {content_href}: {e_chap}") 
+
+            # Final progress update
+            if progress_callback:
+                progress_callback(100)
 
             tree.write(opf_path, encoding='utf-8', xml_declaration=True, pretty_print=True)
 
@@ -561,19 +607,25 @@ async def translate_epub_file(input_filepath, output_filepath,
 async def translate_file(input_filepath, output_filepath,
                          source_language="English", target_language="French",
                          model_name=DEFAULT_MODEL, chunk_target_size_cli=MAIN_LINES_PER_CHUNK,
-                         cli_api_endpoint=API_ENDPOINT):
+                         cli_api_endpoint=API_ENDPOINT, timeout=REQUEST_TIMEOUT,
+                         context_window=OLLAMA_NUM_CTX, max_attempts=MAX_TRANSLATION_ATTEMPTS,
+                         retry_delay=RETRY_DELAY_SECONDS):
     _, ext = os.path.splitext(input_filepath.lower())
     
     if ext == '.epub':
         await translate_epub_file(input_filepath, output_filepath,
                                   source_language, target_language,
                                   model_name, chunk_target_size_cli, 
-                                  cli_api_endpoint)
+                                  cli_api_endpoint, timeout,
+                                  context_window, max_attempts,
+                                  retry_delay)
     else:
         await translate_text_file(input_filepath, output_filepath,
                                   source_language, target_language,
                                   model_name, chunk_target_size_cli, 
-                                  cli_api_endpoint)
+                                  cli_api_endpoint, timeout,
+                                  context_window, max_attempts,
+                                  retry_delay)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Translate a text or EPUB file using an LLM.")
@@ -584,8 +636,16 @@ if __name__ == "__main__":
     parser.add_argument("-m", "--model", default=DEFAULT_MODEL, help=f"LLM model (default: {DEFAULT_MODEL}).")
     parser.add_argument("-cs", "--chunksize", type=int, default=MAIN_LINES_PER_CHUNK, help=f"Target lines per chunk (default: {MAIN_LINES_PER_CHUNK}).")
     parser.add_argument("--api_endpoint", default=API_ENDPOINT, help=f"Ollama API endpoint (default: {API_ENDPOINT}).")
+    parser.add_argument("--timeout", type=int, default=REQUEST_TIMEOUT, help=f"Request timeout in seconds (default: {REQUEST_TIMEOUT}).")
+    parser.add_argument("--context_window", type=int, default=OLLAMA_NUM_CTX, help=f"Context window size (default: {OLLAMA_NUM_CTX}).")
+    parser.add_argument("--max_attempts", type=int, default=MAX_TRANSLATION_ATTEMPTS, help=f"Max translation attempts per chunk (default: {MAX_TRANSLATION_ATTEMPTS}).")
+    parser.add_argument("--retry_delay", type=int, default=RETRY_DELAY_SECONDS, help=f"Retry delay in seconds (default: {RETRY_DELAY_SECONDS}).")
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode to show LLM requests.")
 
     args = parser.parse_args()
+
+    # Set debug mode
+    DEBUG_MODE = args.debug
 
     if args.output is None:
         base, ext = os.path.splitext(args.input)
@@ -595,6 +655,10 @@ if __name__ == "__main__":
     print(f"Starting {file_type_msg} translation from '{args.input}' ({args.source_lang}) to '{args.output}' ({args.target_lang}) using model {args.model}.")
     print(f"Main content target per chunk: {args.chunksize} lines.")
     print(f"Using API Endpoint: {args.api_endpoint}")
+    if DEBUG_MODE:
+        print("Debug mode: ENABLED (LLM requests will be displayed)")
+    else:
+        print("Debug mode: DISABLED (use --debug to enable)")
 
     asyncio.run(translate_file(
         args.input,
@@ -603,5 +667,9 @@ if __name__ == "__main__":
         args.target_lang,
         args.model,
         chunk_target_size_cli=args.chunksize,
-        cli_api_endpoint=args.api_endpoint
+        cli_api_endpoint=args.api_endpoint,
+        timeout=args.timeout,
+        context_window=args.context_window,
+        max_attempts=args.max_attempts,
+        retry_delay=args.retry_delay
     ))
