@@ -201,21 +201,20 @@ RETRY_DELAY_SECONDS = 2           # Wait between retries
 The translation quality depends heavily on the prompt. You can modify the prompt in the `generate_translation_request` function:
 
 ```python
-structured_prompt = f"""
-## [ROLE] 
-# You are a {target_language} professional translator.
+role_and_instructions_block = f"""
+## ROLE
+# You are a {target_language} writer.
 
-## [TRANSLATION INSTRUCTIONS] 
-+ Translate in the author's style.
-+ Precisely preserve the deeper meaning of the text.
-+ Adapt expressions and culture to the {target_language} language.
-+ Vary your vocabulary with synonyms, avoid repetition.
-+ Maintain the original layout, remove typos and line-break hyphens.
+## TRANSLATION
++ Translate in the author's style
++ Preserve meaning and enhance fluidity
++ Adapt expressions and culture to the {target_language} language
++ Maintain the original layout of the text
 
-## [FORMATTING INSTRUCTIONS] 
-+ Translate ONLY the main content between the specified tags.
-+ Surround your translation with <translate> and </translate> tags.
-+ Return only the translation, nothing else.
+## FORMATING
++ Translate ONLY the text enclosed within the tags "[START TO TRANSLATE]" and "[END TO TRANSLATE]" from {source_lang} into {target_language}
++ Surround your translation with {TRANSLATE_TAG_IN} and {TRANSLATE_TAG_OUT} tags. For example: {TRANSLATE_TAG_IN}Your text translated here.{TRANSLATE_TAG_OUT}
++ Return ONLY the translation, formatted as requested
 """
 ```
 
