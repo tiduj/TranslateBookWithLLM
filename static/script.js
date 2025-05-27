@@ -192,7 +192,7 @@ async function loadAvailableModels() {
             showMessage(`⚠️ ${errorMessage}`, 'error');
             
             // Clear the select and add a placeholder
-            modelSelect.innerHTML = '<option value="">No models available - Check Ollama connection</option>';
+            modelSelect.innerHTML = '<option value="">Check connection</option>';
             addLog(`⚠️ No models available from Ollama at ${currentApiEp}`);
         }
     } catch (error) {
