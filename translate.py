@@ -12,7 +12,6 @@ from lxml import etree
 import html
 
 # --- Configuration ---
-API_ENDPOINT = "http://localhost:11434/api/generate"
 DEFAULT_MODEL = "mistral-small:24b"
 MAIN_LINES_PER_CHUNK = 25
 REQUEST_TIMEOUT = 60
@@ -182,7 +181,6 @@ async def generate_translation_request(main_content, context_before, context_aft
 
 ## FORMATING
 + Translate ONLY the text enclosed within the tags "[START TO TRANSLATE]" and "[END TO TRANSLATE]" from {source_lang} into {target_language}
-+ Refer to the "[START PREVIOUS TRANSLATION ({target_language})]" section (if provided) to ensure consistency with the previous paragraph
 + Surround your translation with {TRANSLATE_TAG_IN} and {TRANSLATE_TAG_OUT} tags. For example: {TRANSLATE_TAG_IN}Your text translated here.{TRANSLATE_TAG_OUT}
 + Return ONLY the translation, formatted as requested
 """
@@ -190,9 +188,11 @@ async def generate_translation_request(main_content, context_before, context_aft
     previous_translation_block_text = ""
     if previous_translation_context and previous_translation_context.strip():
         previous_translation_block_text = f"""
-[START PREVIOUS TRANSLATION ({target_language})]
-{previous_translation_context}
-[END PREVIOUS TRANSLATION ({target_language})]"""
+
+## Previous paragraph :
+(...) {previous_translation_context}
+
+"""
     
     text_to_translate_block = f"""
 [START TO TRANSLATE]
@@ -205,9 +205,10 @@ async def generate_translation_request(main_content, context_before, context_aft
         text_to_translate_block
     ]
     structured_prompt = "\n\n".join(part.strip() for part in structured_prompt_parts if part and part.strip()).strip()
-    print("----SEND TO LLM----")
+    
+    print("\n----SEND TO LLM----")
     print(structured_prompt)
-    print("-------------------")
+    print("-------------------\n")
     
     payload = {
         "model": model, "prompt": structured_prompt, "stream": False,
@@ -219,6 +220,10 @@ async def generate_translation_request(main_content, context_before, context_aft
         response.raise_for_status()
         json_response = response.json()
         full_raw_response = json_response.get("response", "")
+
+        print("\n----LLM RAW RESPONSE----")
+        print(full_raw_response)
+        print("------------------------\n")
         
         if not full_raw_response and "error" in json_response:
             err_msg = f"LLM API ERROR: {json_response['error']}"
