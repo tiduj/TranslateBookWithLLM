@@ -172,7 +172,7 @@ async def generate_translation_request(main_content, context_before, context_aft
     source_lang = source_language.upper()
 
     role_and_instructions_block = f"""## ROLE
-# You are a {target_language} professional writer.
+# You are a {target_language} writer.
 
 ## TRANSLATION
 + Translate in the author's style
