@@ -1,6 +1,6 @@
 """
 Flask API for the Translation Interface
-Works with translate.py - Now supports EPUB files with proper progress tracking
+Works with translate.py - Now supports EPUB files
 """
 
 import json
@@ -19,29 +19,22 @@ import zipfile
 
 # Import the original translation script
 try:
-    import translate
-    # Enable debug mode for web interface
-    translate.DEBUG_MODE = True
-    
     from translate import (
-        split_text_into_chunks_with_context,
-        generate_translation_request,
-        translate_epub_file,
-        translate_text_file,
+        split_text_into_chunks_with_context, # Kept for text files if API handles chunking directly
+        generate_translation_request,      # Kept for text files if API handles chunking directly
+        translate_epub_file,               # Now accepts callbacks
+        translate_text_file_with_callbacks, # New/refactored for text files with callbacks
         API_ENDPOINT as DEFAULT_OLLAMA_API_ENDPOINT,
         DEFAULT_MODEL,
         MAIN_LINES_PER_CHUNK,
         REQUEST_TIMEOUT,
-        OLLAMA_NUM_CTX,
-        MAX_TRANSLATION_ATTEMPTS,
-        RETRY_DELAY_SECONDS
+        OLLAMA_NUM_CTX
     )
     print("✅ 'translate' module imported successfully")
-    print("✅ Debug mode ENABLED - LLM requests will be displayed in console")
 except ImportError as e:
     print("❌ Error importing 'translate' module:")
     print(f"   {e}")
-    print("   Ensure 'translate.py' is in the same folder")
+    print("   Ensure 'translate.py' is in the same folder or 'translate_text_file' is named 'translate_text_file_with_callbacks'")
     exit(1)
 
 app = Flask(__name__)
@@ -114,8 +107,8 @@ def get_default_config():
         "chunk_size": MAIN_LINES_PER_CHUNK,
         "timeout": REQUEST_TIMEOUT,
         "context_window": OLLAMA_NUM_CTX,
-        "max_attempts": MAX_TRANSLATION_ATTEMPTS,
-        "retry_delay": RETRY_DELAY_SECONDS,
+        "max_attempts": 2, # Value from translate.py: MAX_TRANSLATION_ATTEMPTS
+        "retry_delay": 2,  # Value from translate.py: RETRY_DELAY_SECONDS
         "supported_formats": ["txt", "epub"]
     })
 
@@ -123,17 +116,18 @@ def get_default_config():
 def start_translation_request():
     data = request.json
 
-    # For file uploads, handle differently
-    if 'file_path' in data:
-        # This is a file-based translation request
+    if 'file_path' in data: # File-based (likely EPUB after upload)
         required_fields = ['file_path', 'source_language', 'target_language', 'model', 'api_endpoint', 'output_filename', 'file_type']
-    else:
-        # This is a text-based translation request
+    else: # Text-based (likely .txt content sent directly)
         required_fields = ['text', 'source_language', 'target_language', 'model', 'api_endpoint', 'output_filename']
     
     for field in required_fields:
-        if field not in data or not data[field]:
-            return jsonify({"error": f"Missing or empty field: {field}"}), 400
+        if field not in data or (isinstance(data[field], str) and not data[field].strip()) or (not isinstance(data[field], str) and data[field] is None): # Check for empty strings too
+             if field == 'text' and data.get('file_type') == 'txt' and data.get('text') == "": # Allow empty text for txt files
+                pass
+             else:
+                return jsonify({"error": f"Missing or empty field: {field}"}), 400
+
 
     translation_id = f"trans_{int(time.time() * 1000)}"
 
@@ -143,20 +137,19 @@ def start_translation_request():
         'model': data['model'],
         'chunk_size': int(data.get('chunk_size', MAIN_LINES_PER_CHUNK)),
         'llm_api_endpoint': data['api_endpoint'],
-        'request_timeout': int(data.get('timeout', REQUEST_TIMEOUT)),
+        'request_timeout': int(data.get('timeout', REQUEST_TIMEOUT)), # This is for LLM requests
         'context_window': int(data.get('context_window', OLLAMA_NUM_CTX)),
-        'max_attempts': int(data.get('max_attempts', MAX_TRANSLATION_ATTEMPTS)),
-        'retry_delay': int(data.get('retry_delay', RETRY_DELAY_SECONDS)),
+        'max_attempts': int(data.get('max_attempts', 2)), # MAX_TRANSLATION_ATTEMPTS
+        'retry_delay': int(data.get('retry_delay', 2)),   # RETRY_DELAY_SECONDS
         'output_filename': data['output_filename']
     }
 
-    # Handle file type
     if 'file_path' in data:
         config['file_path'] = data['file_path']
-        config['file_type'] = data['file_type']
-    else:
+        config['file_type'] = data['file_type'] # Should be 'epub' if file_path is used primarily
+    else: # text content provided
         config['text'] = data['text']
-        config['file_type'] = 'txt'
+        config['file_type'] = data.get('file_type', 'txt') # Default to txt if not specified
 
     active_translations[translation_id] = {
         'status': 'queued',
@@ -179,12 +172,11 @@ def start_translation_request():
     return jsonify({
         "translation_id": translation_id,
         "message": "Translation queued.",
-        "config_received": config
+        "config_received": config # For debugging/confirmation
     })
 
 @app.route('/api/upload', methods=['POST'])
 def upload_file():
-    """Handle file uploads and store them temporarily"""
     if 'file' not in request.files:
         return jsonify({"error": "No file part"}), 400
     
@@ -192,49 +184,42 @@ def upload_file():
     if file.filename == '':
         return jsonify({"error": "No selected file"}), 400
     
-    # Check file extension
     filename = file.filename.lower()
     if not (filename.endswith('.txt') or filename.endswith('.epub')):
         return jsonify({"error": "Only .txt and .epub files are supported"}), 400
     
-    # Create a temporary directory for uploads if it doesn't exist
-    upload_dir = os.path.join(OUTPUT_DIR, 'uploads')
+    upload_dir = os.path.join(OUTPUT_DIR, 'uploads') # Temp storage for uploaded files
     if not os.path.exists(upload_dir):
         os.makedirs(upload_dir)
     
-    # Save the file with a unique name
     timestamp = int(time.time() * 1000)
-    safe_filename = f"{timestamp}_{file.filename}"
+    # Sanitize filename if necessary, for now using timestamp prefix
+    safe_filename = f"{timestamp}_{os.path.basename(file.filename)}" 
     file_path = os.path.join(upload_dir, safe_filename)
     
     try:
         file.save(file_path)
-        
-        # For text files, read content
+        file_size = os.path.getsize(file_path)
+
         if filename.endswith('.txt'):
-            with open(file_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            
-            return jsonify({
-                "success": True,
-                "file_path": file_path,
-                "filename": file.filename,
-                "file_type": "txt",
-                "content": content,
-                "size": os.path.getsize(file_path)
+            # For .txt, we might not need to send content if translate_text_file_with_callbacks reads it.
+            # However, the current JS expects content for .txt files if added this way.
+            # Let's keep sending content for now.
+            # with open(file_path, 'r', encoding='utf-8') as f:
+            #     content = f.read()
+            return jsonify({ # This response is mostly for JS if it needs to pre-process or display
+                "success": True, "file_path": file_path, "filename": file.filename, 
+                "file_type": "txt", "size": file_size # "content": content removed as JS reads it later
             })
-        else:
-            # For EPUB files, just return the path
+        else: # .epub
             return jsonify({
-                "success": True,
-                "file_path": file_path,
-                "filename": file.filename,
-                "file_type": "epub",
-                "size": os.path.getsize(file_path)
+                "success": True, "file_path": file_path, "filename": file.filename,
+                "file_type": "epub", "size": file_size
             })
     
     except Exception as e:
         return jsonify({"error": f"Failed to save file: {str(e)}"}), 500
+
 
 def run_translation_async_wrapper(translation_id, config):
     loop = asyncio.new_event_loop()
@@ -243,12 +228,11 @@ def run_translation_async_wrapper(translation_id, config):
         loop.run_until_complete(perform_actual_translation(translation_id, config))
     except Exception as e:
         error_msg = f"Uncaught major error in translation wrapper {translation_id}: {str(e)}"
-        print(error_msg)
+        print(error_msg) # Server log
         if translation_id in active_translations:
             active_translations[translation_id]['status'] = 'error'
             active_translations[translation_id]['error'] = error_msg
-            if 'logs' not in active_translations[translation_id]:
-                active_translations[translation_id]['logs'] = []
+            if 'logs' not in active_translations[translation_id]: active_translations[translation_id]['logs'] = []
             active_translations[translation_id]['logs'].append(f"[{datetime.now().strftime('%H:%M:%S')}] CRITICAL WRAPPER ERROR: {error_msg}")
             emit_update(translation_id, {'error': error_msg, 'status': 'error', 'log': f"CRITICAL WRAPPER ERROR: {error_msg}"})
     finally:
@@ -256,218 +240,122 @@ def run_translation_async_wrapper(translation_id, config):
 
 async def perform_actual_translation(translation_id, config):
     if translation_id not in active_translations:
-        print(f"Critical error: {translation_id} not found in active_translations at the start of perform_actual_translation.")
+        print(f"Critical error: {translation_id} not found in active_translations.")
         return
 
     active_translations[translation_id]['status'] = 'running'
     emit_update(translation_id, {'status': 'running', 'log': 'Translation task started by worker.'})
 
-    def log_message(message_key, message_content=""):
+    # Define local helper functions to pass as callbacks
+    def _log_message_callback(message_key_from_translate_module, message_content=""):
+        # The 'key' from translate module might not be used directly if API's log_message is simpler
         timestamp = datetime.now().strftime('%H:%M:%S')
         full_log_entry = f"[{timestamp}] {message_content}"
 
-        if 'logs' not in active_translations[translation_id]:
-            active_translations[translation_id]['logs'] = []
+        if 'logs' not in active_translations[translation_id]: active_translations[translation_id]['logs'] = []
         active_translations[translation_id]['logs'].append(full_log_entry)
+        emit_update(translation_id, {'log': message_content}) # Send only content to UI log
 
-        emit_update(translation_id, {'log': message_content})
-
-    def update_translation_progress(progress_percent):
+    def _update_translation_progress_callback(progress_percent):
         if translation_id in active_translations:
             active_translations[translation_id]['progress'] = progress_percent
             emit_update(translation_id, {'progress': progress_percent})
 
-    def update_translation_stats(new_stats):
+    def _update_translation_stats_callback(new_stats_dict):
+        # new_stats_dict could be {'total_chunks': N, 'completed_chunks': C, 'failed_chunks': F}
         if translation_id in active_translations:
-            if 'stats' not in active_translations[translation_id]:
-                 active_translations[translation_id]['stats'] = {}
-            active_translations[translation_id]['stats'].update(new_stats)
-            emit_update(translation_id, {'stats': active_translations[translation_id]['stats']})
+            if 'stats' not in active_translations[translation_id]: active_translations[translation_id]['stats'] = {}
+            # Ensure all expected stat keys are updated or initialized
+            current_stats = active_translations[translation_id]['stats']
+            current_stats.update(new_stats_dict) 
+            
+            # Calculate elapsed time here before emitting
+            current_stats['elapsed_time'] = time.time() - current_stats.get('start_time', time.time())
+            emit_update(translation_id, {'stats': current_stats})
 
-    def epub_progress_callback(progress_percent):
-        """Callback for EPUB translation progress"""
-        update_translation_progress(progress_percent)
-        
+
     try:
-        log_message("config_info", f"🚀 Starting translation ({translation_id}). Configuration: {config['source_language']} to {config['target_language']}, Model: {config['model']}")
-        log_message("llm_endpoint_info", f"🔗 LLM Endpoint: {config['llm_api_endpoint']}")
-        log_message("output_file_info", f"💾 Expected output file: {config['output_filename']}")
-        log_message("file_type_info", f"📄 File type: {config['file_type']}")
+        _log_message_callback("config_info", f"🚀 Starting translation ({translation_id}). Config: {config['source_language']} to {config['target_language']}, Model: {config['model']}")
+        _log_message_callback("llm_endpoint_info", f"🔗 LLM Endpoint: {config['llm_api_endpoint']}")
+        _log_message_callback("output_file_info", f"💾 Expected output file: {config['output_filename']}")
+        _log_message_callback("file_type_info", f"📄 File type: {config['file_type']}")
 
         output_filepath_on_server = os.path.join(OUTPUT_DIR, config['output_filename'])
-
-        # Handle different file types
+        
+        input_path_for_translate_module = config.get('file_path') # For EPUB or pre-uploaded TXT
+        
         if config['file_type'] == 'epub':
-            # For EPUB files, use the translate_epub_file function
-            log_message("epub_processing", "📚 Processing EPUB file...")
+            if not input_path_for_translate_module:
+                _log_message_callback("epub_error_no_path", "❌ EPUB translation requires a file path from upload.")
+                raise Exception("EPUB translation requires a file_path.")
             
-            # Create a temporary file for the input if text content is provided
-            if 'file_path' in config:
-                input_path = config['file_path']
-            else:
-                # This shouldn't happen for EPUB, but handle it gracefully
-                log_message("epub_error", "❌ EPUB translation requires a file path")
-                raise Exception("EPUB translation requires a file path")
-            
-            # Use the translate_epub_file function with progress callback
             await translate_epub_file(
-                input_path,
+                input_path_for_translate_module,
                 output_filepath_on_server,
                 config['source_language'],
                 config['target_language'],
                 config['model'],
                 config['chunk_size'],
                 config['llm_api_endpoint'],
-                config['request_timeout'],
-                config['context_window'],
-                config['max_attempts'],
-                config['retry_delay'],
-                epub_progress_callback  # Pass the progress callback
+                progress_callback=_update_translation_progress_callback,
+                log_callback=_log_message_callback,
+                stats_callback=_update_translation_stats_callback
             )
-            
-            # For EPUB, we can't easily extract the result text
+            # For EPUB, the result is the file itself.
             active_translations[translation_id]['result'] = "[EPUB file translated - download to view]"
             
+        elif config['file_type'] == 'txt':
+            # For text files, the API can either use translate_text_file_with_callbacks
+            # or manage chunking itself as it did before.
+            # Using translate_text_file_with_callbacks for consistency:
+            
+            # If text content is directly in config (from drag/drop of small txt)
+            # we need to write it to a temporary file for translate_text_file_with_callbacks
+            temp_txt_file_path = None
+            if 'text' in config and input_path_for_translate_module is None:
+                with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", delete=False, suffix=".txt", dir=OUTPUT_DIR) as tmp_f:
+                    tmp_f.write(config['text'])
+                    temp_txt_file_path = tmp_f.name
+                input_path_for_translate_module = temp_txt_file_path
+
+            if not input_path_for_translate_module:
+                 _log_message_callback("txt_error_no_input", "❌ TXT translation requires text content or a file path.")
+                 raise Exception("TXT translation input missing.")
+
+            await translate_text_file_with_callbacks(
+                input_path_for_translate_module,
+                output_filepath_on_server,
+                config['source_language'],
+                config['target_language'],
+                config['model'],
+                config['chunk_size'],
+                config['llm_api_endpoint'],
+                progress_callback=_update_translation_progress_callback,
+                log_callback=_log_message_callback,
+                stats_callback=_update_translation_stats_callback
+            )
+            # After translation, read the result back for preview if needed by UI
+            if os.path.exists(output_filepath_on_server):
+                with open(output_filepath_on_server, 'r', encoding='utf-8') as f_res:
+                    active_translations[translation_id]['result'] = f_res.read()
+            else: # Should not happen if translate_text_file_with_callbacks is robust
+                active_translations[translation_id]['result'] = "[TXT file translated - content not loaded for preview]"
+
+            if temp_txt_file_path and os.path.exists(temp_txt_file_path):
+                os.remove(temp_txt_file_path) # Clean up temp file
         else:
-            # For text files, use the existing logic
-            if 'text' in config:
-                text_to_translate = config['text']
-            elif 'file_path' in config:
-                with open(config['file_path'], 'r', encoding='utf-8') as f:
-                    text_to_translate = f.read()
-            else:
-                raise Exception("No text or file path provided")
-            
-            # Use the existing text translation logic
-            structured_chunks = split_text_into_chunks_with_context(text_to_translate, config['chunk_size'])
-            total_chunks = len(structured_chunks)
+            _log_message_callback("unknown_file_type", f"❌ Unknown file type: {config['file_type']}")
+            raise Exception(f"Unsupported file type: {config['file_type']}")
 
-            current_stats = active_translations[translation_id].get('stats', {})
-            current_stats.update({'total_chunks': total_chunks, 'completed_chunks': 0, 'failed_chunks': 0})
-            update_translation_stats(current_stats)
-
-            if total_chunks == 0 and text_to_translate.strip():
-                log_message("chunking_warn", "⚠️ Non-empty text but no chunks generated. Attempting global translation.")
-                structured_chunks.append({ "context_before": "", "main_content": text_to_translate, "context_after": "" })
-                total_chunks = 1
-                update_translation_stats({'total_chunks': total_chunks})
-            elif total_chunks == 0:
-                log_message("empty_text", "Empty input text. No translation needed.")
-                active_translations[translation_id]['status'] = 'completed'
-                active_translations[translation_id]['result'] = ""
-                update_translation_progress(100)
-                emit_update(translation_id, {'status': 'completed', 'result': "", 'output_filename': config['output_filename']})
-                
-                with open(output_filepath_on_server, 'w', encoding='utf-8') as f:
-                    f.write("")
-                active_translations[translation_id]['output_filepath'] = output_filepath_on_server
-                return
-
-            log_message("chunk_count", f"📊 Text divided into {total_chunks} chunks.")
-            
-            full_translation_parts = []
-            last_successful_translation_context = ""
-
-            for i, chunk_data in enumerate(structured_chunks):
-                if active_translations[translation_id].get('interrupted', False):
-                    log_message("interruption_detected_loop", "🛑 Interruption detected. Stopping before the next chunk.")
-                    break
-                
-                chunk_num = i + 1
-                update_translation_progress((i / total_chunks) * 100)
-                main_content = chunk_data["main_content"]
-
-                if not main_content.strip():
-                    log_message("chunk_skip", f"⏭️ Chunk {chunk_num}/{total_chunks}: Empty, skipped.")
-                    full_translation_parts.append("")
-                    current_stats = active_translations[translation_id]['stats'] 
-                    current_stats['completed_chunks'] = current_stats.get('completed_chunks', 0) + 1
-                    update_translation_stats(current_stats)
-                    continue
-
-                log_message("chunk_process_start", f"🔄 Translating chunk {chunk_num}/{total_chunks}...")
-                
-                # First, get the prompt preview
-                _, prompt_preview = await generate_translation_request(
-                    main_content, chunk_data["context_before"], chunk_data["context_after"],
-                    last_successful_translation_context, config['source_language'], config['target_language'],
-                    config['model'], api_endpoint_param=config['llm_api_endpoint'],
-                    timeout=config['request_timeout'], context_window=config['context_window'],
-                    return_prompt=True
-                )
-                
-                # Log the prompt preview
-                if prompt_preview:
-                    log_message("llm_prompt", f"📝 LLM Prompt preview: {prompt_preview}")
-                
-                translated_chunk_text = None
-                current_attempts = 0
-                
-                while current_attempts < config['max_attempts'] and translated_chunk_text is None:
-                    current_attempts += 1
-                    if current_attempts > 1:
-                        log_message("chunk_retry", f"🔁 Retrying chunk {chunk_num} ({current_attempts}/{config['max_attempts']})...")
-                        await asyncio.sleep(config['retry_delay'])
-                    
-                    # Check for interruption before each attempt
-                    if active_translations[translation_id].get('interrupted', False):
-                        log_message("interruption_detected_attempt", "🛑 Interruption detected during translation attempt.")
-                        break
-                    
-                    translated_chunk_text = await generate_translation_request(
-                        main_content, chunk_data["context_before"], chunk_data["context_after"],
-                        last_successful_translation_context, config['source_language'], config['target_language'],
-                        config['model'], api_endpoint_param=config['llm_api_endpoint'],
-                        timeout=config['request_timeout'], context_window=config['context_window']
-                    )
-
-                current_stats = active_translations[translation_id]['stats']
-                if translated_chunk_text is not None:
-                    full_translation_parts.append(translated_chunk_text)
-                    last_successful_translation_context = translated_chunk_text
-                    current_stats['completed_chunks'] = current_stats.get('completed_chunks', 0) + 1
-                    update_translation_stats(current_stats)
-                    log_message("chunk_success", f"✅ Chunk {chunk_num} translated.")
-                else:
-                    # If interrupted, add original content
-                    if active_translations[translation_id].get('interrupted', False):
-                        error_placeholder = f"[INTERRUPTED AT CHUNK {chunk_num}]\n{main_content}\n[END INTERRUPTED CHUNK {chunk_num}]"
-                    else:
-                        error_placeholder = f"[TRANSLATION ERROR CHUNK {chunk_num} AFTER {config['max_attempts']} ATTEMPTS]\n{main_content}\n[END CHUNK ERROR {chunk_num}]"
-                    full_translation_parts.append(error_placeholder)
-                    last_successful_translation_context = ""
-                    current_stats['failed_chunks'] = current_stats.get('failed_chunks', 0) + 1
-                    update_translation_stats(current_stats)
-                    
-                    if active_translations[translation_id].get('interrupted', False):
-                        log_message("chunk_interrupted", f"⏸️ Chunk {chunk_num} interrupted.")
-                        break
-                    else:
-                        log_message("chunk_fail", f"❌ Failed to translate chunk {chunk_num} after {config['max_attempts']} attempts.")
-            
-            # Assembly and Saving for text files - ALWAYS save, even if interrupted
-            final_translation_result = "\n".join(full_translation_parts)
-            active_translations[translation_id]['result'] = final_translation_result
-            
-            # Save the file regardless of interruption status
-            try:
-                with open(output_filepath_on_server, 'w', encoding='utf-8') as f:
-                    f.write(final_translation_result)
-                log_message("save_success", f"💾 Result saved: {output_filepath_on_server}")
-            except Exception as save_error:
-                log_message("save_error", f"❌ Error saving file: {str(save_error)}")
-                raise save_error
-
-        # Common finalization for both file types
-        log_message("save_success", f"💾 Result saved: {output_filepath_on_server}")
+        # Common finalization
+        _log_message_callback("save_success", f"💾 Result saved: {output_filepath_on_server}")
         active_translations[translation_id]['output_filepath'] = output_filepath_on_server
 
-        # Finalizing status
         elapsed_time = time.time() - active_translations[translation_id]['stats'].get('start_time', time.time())
-        update_translation_stats({'elapsed_time': elapsed_time})
+        _update_translation_stats_callback({'elapsed_time': elapsed_time}) # Update final elapsed time
 
         final_status_payload = {
-            'result': active_translations[translation_id]['result'],
+            'result': active_translations[translation_id]['result'], # Full result for txt, placeholder for epub
             'output_filename': config['output_filename'],
             'file_type': config['file_type']
         }
@@ -476,56 +364,73 @@ async def perform_actual_translation(translation_id, config):
 
         if active_translations[translation_id].get('interrupted', False):
             active_translations[translation_id]['status'] = 'interrupted'
-            log_message("summary_interrupted", f"🛑 Translation interrupted. Partial result saved. Time: {elapsed_time:.2f}s.")
+            _log_message_callback("summary_interrupted", f"🛑 Translation interrupted. Partial result saved. Time: {elapsed_time:.2f}s.")
             final_status_payload['status'] = 'interrupted'
-        elif current_job_status != 'error':
+        elif current_job_status != 'error': # Avoid overriding an error status set by callbacks
              active_translations[translation_id]['status'] = 'completed'
-             log_message("summary_completed", f"✅ Translation completed. Time: {elapsed_time:.2f}s.")
+             _log_message_callback("summary_completed", f"✅ Translation completed. Time: {elapsed_time:.2f}s.")
              final_status_payload['status'] = 'completed'
-        else:
-            log_message("summary_error", f"❌ Translation completed with errors. Time: {elapsed_time:.2f}s.")
+        else: # Job status is already 'error'
+            _log_message_callback("summary_error_final", f"❌ Translation finished with errors. Time: {elapsed_time:.2f}s.")
             final_status_payload['status'] = 'error'
             final_status_payload['error'] = active_translations[translation_id].get('error', 'Unknown error during finalization.')
 
-        update_translation_progress(100)
+        _update_translation_progress_callback(100) # Ensure progress hits 100%
         
-        if config['file_type'] == 'txt':
-            completed_chunks_final = active_translations[translation_id]['stats'].get('completed_chunks', 0)
-            failed_chunks_final = active_translations[translation_id]['stats'].get('failed_chunks', 0)
-            total_chunks = active_translations[translation_id]['stats'].get('total_chunks', 0)
-            log_message("summary_stats", f"📊 Chunks: {completed_chunks_final} processed (successful/skipped), {failed_chunks_final} failed out of {total_chunks} total.")
+        # Log final stats summary (if applicable for file type)
+        if config['file_type'] == 'txt' or (config['file_type'] == 'epub' and active_translations[translation_id]['stats'].get('total_chunks',0) > 0):
+            final_stats = active_translations[translation_id]['stats']
+            _log_message_callback("summary_stats_final", f"📊 Stats: {final_stats.get('completed_chunks',0)} processed, {final_stats.get('failed_chunks',0)} failed out of {final_stats.get('total_chunks',0)} total segments/chunks.")
         
         emit_update(translation_id, final_status_payload)
 
     except Exception as e:
-        critical_error_msg = f"Critical error during translation ({translation_id}): {str(e)}"
-        log_message("critical_error_perform", critical_error_msg)
+        critical_error_msg = f"Critical error during translation task ({translation_id}): {str(e)}"
+        # Use _log_message_callback to ensure it's logged to UI as well
+        _log_message_callback("critical_error_perform_task", critical_error_msg)
+        # Print to server console for immediate visibility
+        print(f"!!! {critical_error_msg}") 
+        import traceback
+        tb_str = traceback.format_exc()
+        _log_message_callback("critical_error_perform_task_traceback", tb_str)
+        print(tb_str)
+
         if translation_id in active_translations:
             active_translations[translation_id]['status'] = 'error'
             active_translations[translation_id]['error'] = critical_error_msg
             
             emit_update(translation_id, {
-                'error': critical_error_msg,
-                'status': 'error',
-                'result': active_translations[translation_id].get('result')
+                'error': critical_error_msg, 'status': 'error',
+                'result': active_translations[translation_id].get('result', f"Translation failed: {critical_error_msg}")
             })
 
 def emit_update(translation_id, data_to_emit):
     if translation_id in active_translations:
         data_to_emit['translation_id'] = translation_id
         try:
+            # Ensure stats are included if they exist, for every update
+            if 'stats' not in data_to_emit and 'stats' in active_translations[translation_id]:
+                data_to_emit['stats'] = active_translations[translation_id]['stats']
             socketio.emit('translation_update', data_to_emit, namespace='/')
         except Exception as e:
             print(f"WebSocket emission error for {translation_id}: {e}")
+
 
 @app.route('/api/translation/<translation_id>', methods=['GET'])
 def get_translation_job_status(translation_id):
     if translation_id not in active_translations:
         return jsonify({"error": "Translation not found"}), 404
-    job_data = active_translations[translation_id]
-    stats = job_data.get('stats', {})
-    elapsed = time.time() - stats.get('start_time', time.time()) if 'start_time' in stats else 0
     
+    job_data = active_translations[translation_id]
+    # Ensure basic stats structure exists if it was never initialized
+    stats = job_data.get('stats', {'start_time': time.time(), 'total_chunks': 0, 'completed_chunks': 0, 'failed_chunks': 0})
+    
+    # Calculate elapsed time dynamically if not finalized
+    if job_data.get('status') == 'running' or job_data.get('status') == 'queued':
+        elapsed = time.time() - stats.get('start_time', time.time())
+    else: # Use stored elapsed_time if job is done or errored
+        elapsed = stats.get('elapsed_time', time.time() - stats.get('start_time', time.time()))
+
     return jsonify({
         "translation_id": translation_id,
         "status": job_data.get('status'),
@@ -534,14 +439,14 @@ def get_translation_job_status(translation_id):
             'total_chunks': stats.get('total_chunks', 0),
             'completed_chunks': stats.get('completed_chunks', 0),
             'failed_chunks': stats.get('failed_chunks', 0),
-            'start_time': stats.get('start_time'),
-            'elapsed_time': elapsed
+            'start_time': stats.get('start_time'), # This is a timestamp
+            'elapsed_time': elapsed # This is a duration in seconds
         },
-        "logs": job_data.get('logs', [])[-100:],
+        "logs": job_data.get('logs', [])[-100:], # Get last 100 log entries
         "result_preview": (job_data.get('result')[:1000] + '...' if len(job_data.get('result', '')) > 1000 else job_data.get('result')) if job_data.get('result') else None,
         "error": job_data.get('error'),
         "config": job_data.get('config'),
-        "output_filepath": job_data.get('output_filepath')
+        "output_filepath": job_data.get('output_filepath') # For debug, actual download via /download
     })
 
 @app.route('/api/translation/<translation_id>/interrupt', methods=['POST'])
@@ -550,27 +455,34 @@ def interrupt_translation_job(translation_id):
         return jsonify({"error": "Translation not found"}), 404
     job = active_translations[translation_id]
     if job.get('status') == 'running' or job.get('status') == 'queued':
-        job['interrupted'] = True
-        emit_update(translation_id, {'log': '🛑 Interruption signal received by the server.'})
-        return jsonify({"message": "Interruption signal sent and being processed."}), 200
-    return jsonify({"message": "The translation is not in an interruptible state (already completed, failed, or interrupted)."}), 400
+        job['interrupted'] = True # Signal the interruption
+        # Log this via emit_update for UI
+        emit_update(translation_id, {'log': '🛑 Interruption signal received by the server, processing...'})
+        return jsonify({"message": "Interruption signal sent."}), 200
+    return jsonify({"message": "The translation is not in an interruptible state (e.g., already completed or failed)."}), 400
 
 @app.route('/api/download/<translation_id>', methods=['GET'])
 def download_translated_output_file(translation_id):
     if translation_id not in active_translations:
         return jsonify({"error": "Translation ID not found."}), 404
+    
     job_data = active_translations[translation_id]
     server_filepath = job_data.get('output_filepath')
 
-    if not server_filepath or not os.path.exists(server_filepath):
+    if not server_filepath: # Fallback to constructing path from config if output_filepath wasn't set
         config_output_filename = job_data.get('config', {}).get('output_filename')
         if config_output_filename:
-            potential_path = os.path.join(OUTPUT_DIR, config_output_filename)
-            if os.path.exists(potential_path): server_filepath = potential_path
-            else: return jsonify({"error": f"File '{config_output_filename}' not found on the server."}), 404
-        else: return jsonify({"error": "Translation file path not available or file does not exist."}), 404
+            server_filepath = os.path.join(OUTPUT_DIR, config_output_filename)
+        else: # Should not happen if config is always present
+            return jsonify({"error": "Output filename configuration missing."}), 404
+            
+    if not os.path.exists(server_filepath):
+        # Log this error on the server for debugging
+        print(f"Download error: File '{server_filepath}' for TID {translation_id} not found on server.")
+        return jsonify({"error": f"File '{os.path.basename(server_filepath)}' not found. It might have failed or been cleaned up."}), 404
     
     try:
+        # Ensure the directory and filename are correctly separated for send_from_directory
         directory = os.path.abspath(os.path.dirname(server_filepath))
         filename = os.path.basename(server_filepath)
         return send_from_directory(directory, filename, as_attachment=True)
@@ -592,6 +504,7 @@ def list_all_translations():
         })
     return jsonify({"translations": sorted(summary_list, key=lambda x: x.get('start_time', 0), reverse=True)})
 
+
 @socketio.on('connect')
 def handle_websocket_connect():
     print(f'🔌 WebSocket client connected: {request.sid}')
@@ -601,10 +514,17 @@ def handle_websocket_connect():
 def handle_websocket_disconnect():
     print(f'🔌 WebSocket client disconnected: {request.sid}')
 
+
+# Error Handlers
 @app.errorhandler(404)
 def route_not_found(error): return jsonify({"error": "API Endpoint not found"}), 404
 @app.errorhandler(500)
-def internal_server_error(error): return jsonify({"error": "Internal server error", "details": str(error)}), 500
+def internal_server_error(error): 
+    # More detailed server-side logging for 500 errors
+    tb_str = traceback.format_exc()
+    print(f"INTERNAL SERVER ERROR: {error}\nTRACEBACK:\n{tb_str}")
+    return jsonify({"error": "Internal server error", "details": str(error)}), 500
+
 
 if __name__ == '__main__':
     print("\n" + "="*60 + f"\n🚀 LLM TRANSLATION SERVER (Version {datetime.now().strftime('%Y%m%d-%H%M')})\n" + "="*60)
@@ -613,4 +533,5 @@ if __name__ == '__main__':
     print(f"   - API: http://localhost:5000/api/")
     print(f"   - Supported formats: .txt and .epub")
     print("\n💡 Press Ctrl+C to stop the server\n")
+    # Changed debug=False for production/stability, was True
     socketio.run(app, debug=False, host='0.0.0.0', port=5000)

@@ -17,14 +17,11 @@ DEFAULT_MODEL = "mistral-small:24b"
 MAIN_LINES_PER_CHUNK = 25
 REQUEST_TIMEOUT = 60
 OLLAMA_NUM_CTX = 2048
-SENTENCE_TERMINATORS = tuple(list(".!?") + ['."', '?"', '!"', '."', ".'", "?'", "!'", ":", ".)"])
+SENTENCE_TERMINATORS = tuple(list(".!?") + ['."', '?"', '!"', '.”', ".'", "?'", "!'", ":", ".)"])
 MAX_TRANSLATION_ATTEMPTS = 2
 RETRY_DELAY_SECONDS = 2
 TRANSLATE_TAG_IN = "[START]"
 TRANSLATE_TAG_OUT = "[END]"
-
-# Global debug flag
-DEBUG_MODE = False
 
 NAMESPACES = {
     'opf': 'http://www.idpf.org/2007/opf',
@@ -32,6 +29,26 @@ NAMESPACES = {
     'xhtml': 'http://www.w3.org/1999/xhtml',
     'epub': 'http://www.idpf.org/2007/ops'
 }
+
+# EPUB specific tags
+IGNORED_TAGS_EPUB = [
+    '{http://www.w3.org/1999/xhtml}script',
+    '{http://www.w3.org/1999/xhtml}style',
+    '{http://www.w3.org/1999/xhtml}meta',
+    '{http://www.w3.org/1999/xhtml}link'
+]
+
+CONTENT_BLOCK_TAGS_EPUB = [
+    '{http://www.w3.org/1999/xhtml}p', '{http://www.w3.org/1999/xhtml}div',
+    '{http://www.w3.org/1999/xhtml}li', '{http://www.w3.org/1999/xhtml}h1',
+    '{http://www.w3.org/1999/xhtml}h2', '{http://www.w3.org/1999/xhtml}h3',
+    '{http://www.w3.org/1999/xhtml}h4', '{http://www.w3.org/1999/xhtml}h5',
+    '{http://www.w3.org/1999/xhtml}h6', '{http://www.w3.org/1999/xhtml}blockquote',
+    '{http://www.w3.org/1999/xhtml}td', '{http://www.w3.org/1999/xhtml}th',
+    '{http://www.w3.org/1999/xhtml}caption',
+    '{http://www.w3.org/1999/xhtml}dt', '{http://www.w3.org/1999/xhtml}dd'
+]
+
 
 def get_adjusted_start_index(all_lines, intended_start_idx, max_look_back_lines=20):
     if intended_start_idx == 0:
@@ -150,8 +167,7 @@ def split_text_into_chunks_with_context(text, main_lines_per_chunk_target):
 
 async def generate_translation_request(main_content, context_before, context_after, previous_translation_context,
                                        source_language="English", target_language="French", model=DEFAULT_MODEL,
-                                       api_endpoint_param=API_ENDPOINT, timeout=REQUEST_TIMEOUT, context_window=OLLAMA_NUM_CTX,
-                                       return_prompt=False):
+                                       api_endpoint_param=API_ENDPOINT, log_callback=None): # Added log_callback
     full_raw_response = ""
     source_lang = source_language.upper()
 
@@ -196,42 +212,42 @@ async def generate_translation_request(main_content, context_before, context_aft
         "prompt": structured_prompt, 
         "stream": False,
         "options": {
-            "num_ctx": context_window
+            "num_ctx": OLLAMA_NUM_CTX
         }
     }
 
-    if DEBUG_MODE:
-        print("\n--- START LLM Request ---")
-        print(structured_prompt)
-        print("\n--- END LLM Request ---")
-    
-    # Return prompt if requested (for web interface)
-    if return_prompt:
-        prompt_preview = structured_prompt[:500] + "..." if len(structured_prompt) > 500 else structured_prompt
-        return None, prompt_preview
-    
     try:
-        response = requests.post(api_endpoint_param, json=payload, timeout=timeout)
+        response = requests.post(api_endpoint_param, json=payload, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
         json_response = response.json()
         full_raw_response = json_response.get("response", "")
         
         if not full_raw_response and "error" in json_response:
-            tqdm.write(f"\nError received from LLM API: {json_response['error']}")
+            err_msg = f"Error received from LLM API: {json_response['error']}"
+            if log_callback: log_callback("llm_api_error", err_msg)
+            else: tqdm.write(f"\n{err_msg}")
             return None
             
     except requests.exceptions.Timeout as e:
-        tqdm.write(f"\nLLM API request timed out after {timeout}s: {e}")
+        err_msg = f"LLM API request timed out after {REQUEST_TIMEOUT}s: {e}"
+        if log_callback: log_callback("llm_timeout_error", err_msg)
+        else: tqdm.write(f"\n{err_msg}")
         return None
     except requests.exceptions.HTTPError as e:
-        tqdm.write(f"\nLLM API HTTP error: {e.response.status_code} - {e.response.reason}. Response: {e.response.text[:500]}...")
+        err_msg = f"LLM API HTTP error: {e.response.status_code} - {e.response.reason}. Response: {e.response.text[:500]}..."
+        if log_callback: log_callback("llm_http_error", err_msg)
+        else: tqdm.write(f"\n{err_msg}")
         return None
     except requests.exceptions.RequestException as e:
-        tqdm.write(f"\nLLM API request error: {e}")
+        err_msg = f"LLM API request error: {e}"
+        if log_callback: log_callback("llm_request_error", err_msg)
+        else: tqdm.write(f"\n{err_msg}")
         return None
     except json.JSONDecodeError as e:
         raw_response_text = response.text if 'response' in locals() and hasattr(response, 'text') else "N/A"
-        tqdm.write(f"\nJSON decoding error: {e}. Raw response: {raw_response_text[:500]}...")
+        err_msg = f"JSON decoding error: {e}. Raw response: {raw_response_text[:500]}..."
+        if log_callback: log_callback("llm_json_decode_error", err_msg)
+        else: tqdm.write(f"\n{err_msg}")
         return None
     
     escaped_tag_in = re.escape(TRANSLATE_TAG_IN)
@@ -243,67 +259,123 @@ async def generate_translation_request(main_content, context_before, context_aft
         extracted_translation = match.group(1).strip()
         return extracted_translation
     else:
-        tqdm.write(f"\nWARNING: Tags {TRANSLATE_TAG_IN}...{TRANSLATE_TAG_OUT} not found in LLM response.")
-        if DEBUG_MODE:
-            tqdm.write(f"Full raw response was: {full_raw_response[:500]}...")
-        return None
+        warn_msg = f"WARNING: Tags {TRANSLATE_TAG_IN}...{TRANSLATE_TAG_OUT} not found in LLM response."
+        if log_callback: log_callback("llm_tag_warning", warn_msg)
+        else: tqdm.write(f"\n{warn_msg}")
+        
+        resp_preview = f"Full raw response was: {full_raw_response[:500]}..."
+        if log_callback: log_callback("llm_raw_response_preview", resp_preview)
+        else: tqdm.write(resp_preview)
+        
+        if main_content in full_raw_response:
+            discard_msg = "LLM response seems to contain the input prompt. Discarding."
+            if log_callback: log_callback("llm_prompt_in_response_warning", discard_msg)
+            else: tqdm.write(discard_msg)
+            return None
+        return full_raw_response.strip()
 
-async def translate_text_file(input_filepath, output_filepath,
+
+async def translate_text_file_with_callbacks(input_filepath, output_filepath, # Renamed for clarity
                                source_language="English", target_language="French",
                                model_name=DEFAULT_MODEL, chunk_target_lines_cli=MAIN_LINES_PER_CHUNK,
-                               cli_api_endpoint=API_ENDPOINT, timeout=REQUEST_TIMEOUT, 
-                               context_window=OLLAMA_NUM_CTX, max_attempts=MAX_TRANSLATION_ATTEMPTS,
-                               retry_delay=RETRY_DELAY_SECONDS):
+                               cli_api_endpoint=API_ENDPOINT,
+                               progress_callback=None, log_callback=None, stats_callback=None):
     if not os.path.exists(input_filepath):
-        print(f"Error: Input file '{input_filepath}' not found.")
+        err_msg = f"Error: Input file '{input_filepath}' not found."
+        if log_callback: log_callback("file_not_found_error", err_msg)
+        else: print(err_msg)
         return
 
     try:
         with open(input_filepath, 'r', encoding='utf-8') as f:
             original_text = f.read()
     except Exception as e:
-        print(f"Error reading input file: {e}")
+        err_msg = f"Error reading input file: {e}"
+        if log_callback: log_callback("file_read_error", err_msg)
+        else: print(err_msg)
         return
 
-    print(f"Splitting text from '{source_language}' into chunks with sentence alignment...")
+    log_msg_split = f"Splitting text from '{source_language}' into chunks with sentence alignment..."
+    if log_callback: log_callback("txt_split_start", log_msg_split)
+    else: print(log_msg_split)
+    
     structured_chunks = split_text_into_chunks_with_context(original_text, chunk_target_lines_cli)
     total_chunks = len(structured_chunks)
 
+    if stats_callback and total_chunks > 0:
+        stats_callback({'total_chunks': total_chunks, 'completed_chunks': 0, 'failed_chunks': 0})
+
+
     if total_chunks == 0 and original_text.strip():
-        print("Warning: Non-empty text but no chunks generated. Processing as a single chunk.")
+        warn_msg = "Warning: Non-empty text but no chunks generated. Processing as a single chunk."
+        if log_callback: log_callback("txt_no_chunks_warning", warn_msg)
+        else: print(warn_msg)
         structured_chunks.append({ "context_before": "", "main_content": original_text, "context_after": "" })
         total_chunks = 1
+        if stats_callback: stats_callback({'total_chunks': 1})
     elif total_chunks == 0:
-        print("Input file empty. No translation needed.")
+        info_msg = "Input file empty. No translation needed."
+        if log_callback: log_callback("txt_empty_input", info_msg)
+        else: print(info_msg)
         try:
             with open(output_filepath, 'w', encoding='utf-8') as f: f.write("")
-            print(f"Empty output file '{output_filepath}' created.")
-        except Exception as e: print(f"Error saving empty output file: {e}")
+            success_msg = f"Empty output file '{output_filepath}' created."
+            if log_callback: log_callback("txt_empty_output_created", success_msg)
+            else: print(success_msg)
+        except Exception as e:
+            err_msg = f"Error saving empty output file: {e}"
+            if log_callback: log_callback("txt_empty_save_error", err_msg)
+            else: print(err_msg)
+        if progress_callback: progress_callback(100)
         return
 
-    print(f"The text will be translated from {source_language} to {target_language}.")
-    print(f"The text has been divided into {total_chunks} main chunks.")
-    print(f"Target size for each main chunk: ~{chunk_target_lines_cli} lines.")
+    lang_info = f"The text will be translated from {source_language} to {target_language}."
+    chunk_info1 = f"The text has been divided into {total_chunks} main chunks, stored in memory."
+    chunk_info2 = f"Target size for each main chunk: ~{chunk_target_lines_cli} lines."
+    if log_callback:
+        log_callback("txt_translation_info_lang", lang_info)
+        log_callback("txt_translation_info_chunks1", chunk_info1)
+        log_callback("txt_translation_info_chunks2", chunk_info2)
+    else:
+        print(lang_info)
+        print(chunk_info1)
+        print(chunk_info2)
 
     full_translation_parts = []
     last_successful_llm_context = "" 
+    completed_chunks_count = 0
+    failed_chunks_count = 0
 
-    for i, chunk_data in enumerate(tqdm(structured_chunks, desc=f"Translating {source_language} to {target_language}", unit="chunk")):
+    start_msg = "Starting translation of stored chunks..."
+    if log_callback: log_callback("txt_translation_loop_start", start_msg)
+    else: print(start_msg)
+
+    iterator = tqdm(structured_chunks, desc=f"Translating {source_language} to {target_language}", unit="chunk") if not log_callback else structured_chunks
+
+    for i, chunk_data in enumerate(iterator):
+        if progress_callback and total_chunks > 0:
+            progress_callback((i / total_chunks) * 100) # Progress before processing current chunk
+
         main_content_to_translate = chunk_data["main_content"]
         context_before_text = chunk_data["context_before"]
         context_after_text = chunk_data["context_after"]
 
         if not main_content_to_translate.strip():
             full_translation_parts.append(main_content_to_translate) 
+            completed_chunks_count +=1 # Count empty chunks as "completed" for progress
+            if stats_callback and total_chunks > 0:
+                 stats_callback({'completed_chunks': completed_chunks_count, 'failed_chunks': failed_chunks_count})
             continue
 
         translated_chunk_text = None
         current_attempts = 0
-        while current_attempts < max_attempts and translated_chunk_text is None:
+        while current_attempts < MAX_TRANSLATION_ATTEMPTS and translated_chunk_text is None:
             current_attempts += 1
             if current_attempts > 1:
-                tqdm.write(f"\nRetrying chunk {i+1}/{total_chunks} (attempt {current_attempts}/{max_attempts})...")
-                await asyncio.sleep(retry_delay)
+                retry_msg = f"Retrying chunk {i+1}/{total_chunks} (attempt {current_attempts}/{MAX_TRANSLATION_ATTEMPTS})..."
+                if log_callback: log_callback("txt_chunk_retry", retry_msg)
+                else: tqdm.write(f"\n{retry_msg}")
+                await asyncio.sleep(RETRY_DELAY_SECONDS)
 
             translated_chunk_text = await generate_translation_request(
                 main_content_to_translate,
@@ -313,135 +385,64 @@ async def translate_text_file(input_filepath, output_filepath,
                 source_language,
                 target_language,
                 model_name,
-                cli_api_endpoint,
-                timeout,
-                context_window
+                api_endpoint_param=cli_api_endpoint,
+                log_callback=log_callback # Pass log_callback to generate_translation_request
             )
 
         if translated_chunk_text is not None:
             full_translation_parts.append(translated_chunk_text)
+            completed_chunks_count+=1
             words = translated_chunk_text.split()
             if len(words) > 150: 
                 last_successful_llm_context = " ".join(words[-150:])
             else:
                 last_successful_llm_context = translated_chunk_text
-            
-            # Progress info after each chunk
-            if not DEBUG_MODE:
-                completed = i + 1
-                percent = (completed / total_chunks) * 100
-                tqdm.write(f"Progress: {completed}/{total_chunks} chunks ({percent:.1f}%)")
         else:
-            tqdm.write(f"\nError translating/extracting chunk {i+1} after {max_attempts} attempts. Original content preserved with error tags.")
+            err_msg_chunk = f"Error translating/extracting chunk {i+1} after {MAX_TRANSLATION_ATTEMPTS} attempts. Original content preserved."
+            if log_callback: log_callback("txt_chunk_translation_error", err_msg_chunk)
+            else: tqdm.write(f"\n{err_msg_chunk}")
             error_placeholder = f"[TRANSLATION_ERROR CHUNK {i+1}]\n{main_content_to_translate}\n[/TRANSLATION_ERROR CHUNK {i+1}]"
             full_translation_parts.append(error_placeholder)
+            failed_chunks_count+=1
             last_successful_llm_context = ""
+        
+        if stats_callback and total_chunks > 0:
+            stats_callback({'completed_chunks': completed_chunks_count, 'failed_chunks': failed_chunks_count})
+    
+    if progress_callback: progress_callback(100) # Final progress update
 
     final_translated_text = "\n".join(full_translation_parts)
     try:
         with open(output_filepath, 'w', encoding='utf-8') as f:
             f.write(final_translated_text)
-        print(f"Full translation saved to '{output_filepath}'")
+        success_msg = f"Full translation saved to '{output_filepath}'"
+        if log_callback: log_callback("txt_save_success", success_msg)
+        else: print(success_msg)
     except Exception as e:
-        print(f"Error saving output file: {e}")
+        err_msg = f"Error saving output file: {e}"
+        if log_callback: log_callback("txt_save_error", err_msg)
+        else: print(err_msg)
 
-async def translate_text_with_chunking(text_to_translate, source_language, target_language, model_name, 
-                                      cli_api_endpoint, chunk_target_lines, previous_llm_context="",
-                                      timeout=REQUEST_TIMEOUT, context_window=OLLAMA_NUM_CTX):
-    if not text_to_translate.strip():
-        return text_to_translate 
+def _collect_epub_translation_jobs_recursive(element, file_path_abs, jobs_list, chunk_size, log_callback=None):
+    if element.tag in IGNORED_TAGS_EPUB:
+        return
 
-    structured_chunks = split_text_into_chunks_with_context(text_to_translate, chunk_target_lines)
-
-    if not structured_chunks:
-        translated_text_segment = await generate_translation_request(
-            text_to_translate, "", "", previous_llm_context,
-            source_language, target_language, model_name, api_endpoint_param=cli_api_endpoint,
-            timeout=timeout, context_window=context_window
-        )
-        return translated_text_segment if translated_text_segment is not None else text_to_translate
-
-    translated_parts = []
-    current_sub_chunk_llm_context = previous_llm_context 
-
-    for chunk_data in structured_chunks:
-        main_content = chunk_data["main_content"]
-        context_before_for_llm = chunk_data["context_before"]
-        context_after_for_llm = chunk_data["context_after"]
-        
-        if not main_content.strip():
-            if main_content: 
-                translated_parts.append(main_content)
-            continue
-
-        translated_segment = await generate_translation_request(
-            main_content, context_before_for_llm, context_after_for_llm, current_sub_chunk_llm_context, 
-            source_language, target_language, model_name, api_endpoint_param=cli_api_endpoint,
-            timeout=timeout, context_window=context_window
-        )
-
-        if translated_segment is not None:
-            translated_parts.append(translated_segment)
-            words = translated_segment.split()
-            if len(words) > 150: 
-                current_sub_chunk_llm_context = " ".join(words[-150:])
-            else:
-                current_sub_chunk_llm_context = translated_segment
-        else:
-            error_placeholder = f"[EPUB_SUB_CHUNK_ERROR]\n{main_content}\n[/EPUB_SUB_CHUNK_ERROR]"
-            translated_parts.append(error_placeholder)
-            current_sub_chunk_llm_context = "" 
-
-    final_translation = "\n".join(translated_parts)
-    return final_translation if final_translation.strip() or text_to_translate.strip() == "" else text_to_translate
-
-async def translate_element_preserve_structure(element, source_language, target_language, model_name, 
-                                             cli_api_endpoint, chunk_target_lines=MAIN_LINES_PER_CHUNK, 
-                                             previous_llm_context="", timeout=REQUEST_TIMEOUT, 
-                                             context_window=OLLAMA_NUM_CTX):
-    if element.tag in ['{http://www.w3.org/1999/xhtml}script', 
-                        '{http://www.w3.org/1999/xhtml}style',
-                        '{http://www.w3.org/1999/xhtml}meta',
-                        '{http://www.w3.org/1999/xhtml}link']:
-        return previous_llm_context 
-    
-    content_block_tags = [
-        '{http://www.w3.org/1999/xhtml}p', '{http://www.w3.org/1999/xhtml}div', 
-        '{http://www.w3.org/1999/xhtml}li', '{http://www.w3.org/1999/xhtml}h1', 
-        '{http://www.w3.org/1999/xhtml}h2', '{http://www.w3.org/1999/xhtml}h3', 
-        '{http://www.w3.org/1999/xhtml}h4', '{http://www.w3.org/1999/xhtml}h5', 
-        '{http://www.w3.org/1999/xhtml}h6', '{http://www.w3.org/1999/xhtml}blockquote',
-        '{http://www.w3.org/1999/xhtml}td', '{http://www.w3.org/1999/xhtml}th',
-        '{http://www.w3.org/1999/xhtml}caption',
-        '{http://www.w3.org/1999/xhtml}dt', '{http://www.w3.org/1999/xhtml}dd'
-    ]
-    
-    current_element_overall_context = previous_llm_context
-
-    if element.tag in content_block_tags:
-        block_text_content = "".join(element.itertext())
-
-        if block_text_content.strip():
-            translated_block = await translate_text_with_chunking(
-                block_text_content.strip(),
-                source_language, target_language, model_name,
-                cli_api_endpoint, chunk_target_lines,
-                current_element_overall_context,
-                timeout, context_window
-            )
-            if translated_block is not None and translated_block.strip() != block_text_content.strip() : 
-                element.text = translated_block
-                for child_node in list(element): 
-                    element.remove(child_node)
-                
-                words = translated_block.split() 
-                if len(words) > 150: current_element_overall_context = " ".join(words[-150:])
-                elif translated_block.strip(): current_element_overall_context = translated_block
-            elif translated_block is None: 
-                element.text = f"[BLOCK_TRANSLATION_ERROR]{block_text_content.strip()}[/BLOCK_TRANSLATION_ERROR]"
-                for child_node in list(element): element.remove(child_node)
-                current_element_overall_context = ""
-        return current_element_overall_context
+    if element.tag in CONTENT_BLOCK_TAGS_EPUB:
+        text_content_for_chunking = "".join(element.itertext()).strip()
+        if text_content_for_chunking:
+            sub_chunks = split_text_into_chunks_with_context(text_content_for_chunking, chunk_size)
+            if not sub_chunks: 
+                sub_chunks = [{"context_before": "", "main_content": text_content_for_chunking, "context_after": ""}]
+            
+            jobs_list.append({
+                'element_ref': element, 'type': 'block_content',
+                'original_text_stripped': text_content_for_chunking,
+                'sub_chunks': sub_chunks, 'file_path': file_path_abs, 'translated_text': None
+            })
+        for child in element:
+            if child.tag in CONTENT_BLOCK_TAGS_EPUB:
+                _collect_epub_translation_jobs_recursive(child, file_path_abs, jobs_list, chunk_size, log_callback)
+        return
 
     if element.text:
         original_text_content = element.text
@@ -449,87 +450,68 @@ async def translate_element_preserve_structure(element, source_language, target_
         if text_to_translate:
             leading_space = original_text_content[:len(original_text_content) - len(original_text_content.lstrip())]
             trailing_space = original_text_content[len(original_text_content.rstrip()):]
-            
-            translated = await translate_text_with_chunking(
-                text_to_translate, source_language, target_language, model_name,
-                cli_api_endpoint, chunk_target_lines, current_element_overall_context,
-                timeout, context_window
-            )
-            if translated is not None and translated != text_to_translate:
-                element.text = leading_space + translated + trailing_space
-                words = translated.split()
-                if len(words) > 150: current_element_overall_context = " ".join(words[-150:])
-                elif translated.strip(): current_element_overall_context = translated
-            elif translated is None:
-                element.text = leading_space + f"[TEXT_TRANSLATION_ERROR]{text_to_translate}[/TEXT_TRANSLATION_ERROR]" + trailing_space
-                current_element_overall_context = ""
+            sub_chunks = split_text_into_chunks_with_context(text_to_translate, chunk_size)
+            if not sub_chunks:
+                 sub_chunks = [{"context_before": "", "main_content": text_to_translate, "context_after": ""}]
+            jobs_list.append({
+                'element_ref': element, 'type': 'text',
+                'original_text_stripped': text_to_translate, 'sub_chunks': sub_chunks,
+                'leading_space': leading_space, 'trailing_space': trailing_space,
+                'file_path': file_path_abs, 'translated_text': None
+            })
 
     for child in element:
-        current_element_overall_context = await translate_element_preserve_structure(
-            child, source_language, target_language, model_name, 
-            cli_api_endpoint, chunk_target_lines, current_element_overall_context,
-            timeout, context_window
-        )
-    
+        _collect_epub_translation_jobs_recursive(child, file_path_abs, jobs_list, chunk_size, log_callback)
+
     if element.tail:
         original_tail_content = element.tail
         tail_to_translate = original_tail_content.strip()
         if tail_to_translate:
             leading_space_tail = original_tail_content[:len(original_tail_content) - len(original_tail_content.lstrip())]
             trailing_space_tail = original_tail_content[len(original_tail_content.rstrip()):]
-
-            translated_tail = await translate_text_with_chunking(
-                tail_to_translate, source_language, target_language, model_name,
-                cli_api_endpoint, chunk_target_lines, current_element_overall_context,
-                timeout, context_window
-            )
-            if translated_tail is not None and translated_tail != tail_to_translate:
-                element.tail = leading_space_tail + translated_tail + trailing_space_tail
-                words = translated_tail.split()
-                if len(words) > 150: current_element_overall_context = " ".join(words[-150:])
-                elif translated_tail.strip(): current_element_overall_context = translated_tail
-            elif translated_tail is None:
-                element.tail = leading_space_tail + f"[TAIL_TRANSLATION_ERROR]{tail_to_translate}[/TAIL_TRANSLATION_ERROR]" + trailing_space_tail
-                current_element_overall_context = ""
-            
-    return current_element_overall_context
+            sub_chunks = split_text_into_chunks_with_context(tail_to_translate, chunk_size)
+            if not sub_chunks:
+                sub_chunks = [{"context_before": "", "main_content": tail_to_translate, "context_after": ""}]
+            jobs_list.append({
+                'element_ref': element, 'type': 'tail',
+                'original_text_stripped': tail_to_translate, 'sub_chunks': sub_chunks,
+                'leading_space': leading_space_tail, 'trailing_space': trailing_space_tail,
+                'file_path': file_path_abs, 'translated_text': None
+            })
 
 async def translate_epub_file(input_filepath, output_filepath,
                                source_language="English", target_language="French",
                                model_name=DEFAULT_MODEL, chunk_target_lines_arg=MAIN_LINES_PER_CHUNK,
-                               cli_api_endpoint=API_ENDPOINT, timeout=REQUEST_TIMEOUT,
-                               context_window=OLLAMA_NUM_CTX, max_attempts=MAX_TRANSLATION_ATTEMPTS,
-                               retry_delay=RETRY_DELAY_SECONDS, progress_callback=None):
+                               cli_api_endpoint=API_ENDPOINT,
+                               progress_callback=None, log_callback=None, stats_callback=None): # Added callbacks
     if not os.path.exists(input_filepath):
-        print(f"Error: Input file '{input_filepath}' not found.")
+        err_msg = f"Error: Input file '{input_filepath}' not found."
+        if log_callback: log_callback("epub_input_file_not_found", err_msg)
+        else: print(err_msg)
         return
-    
+
+    all_translation_jobs = [] 
+    parsed_xhtml_docs = {}    
+
     with tempfile.TemporaryDirectory() as temp_dir:
         try:
             with zipfile.ZipFile(input_filepath, 'r') as zip_ref:
                 zip_ref.extractall(temp_dir)
             
             opf_path = None
-            for root_dir, dirs, files in os.walk(temp_dir):
+            for root_dir, _, files in os.walk(temp_dir):
                 for file in files:
                     if file.endswith('.opf'):
                         opf_path = os.path.join(root_dir, file)
                         break
-                if opf_path:
-                    break
+                if opf_path: break
             if not opf_path: raise FileNotFoundError("content.opf not found in EPUB.")
             
-            tree = etree.parse(opf_path)
-            xml_root = tree.getroot()
-            metadata = xml_root.find('.//opf:metadata', namespaces=NAMESPACES)
-            if metadata is not None:
-                lang_el = metadata.find('.//dc:language', namespaces=NAMESPACES)
-                if lang_el is not None: lang_el.text = target_language.lower()[:2]
-                title_el = metadata.find('.//dc:title', namespaces=NAMESPACES)
-                if title_el is not None and title_el.text: title_el.text = f"{title_el.text} ({target_language} Translation)"
-
-            manifest = xml_root.find('.//opf:manifest', namespaces=NAMESPACES)
-            spine = xml_root.find('.//opf:spine', namespaces=NAMESPACES)
+            opf_tree = etree.parse(opf_path)
+            opf_root = opf_tree.getroot()
+            
+            manifest = opf_root.find('.//opf:manifest', namespaces=NAMESPACES)
+            spine = opf_root.find('.//opf:spine', namespaces=NAMESPACES)
             if manifest is None or spine is None: raise ValueError("Invalid EPUB: missing manifest or spine.")
 
             content_files_hrefs = []
@@ -540,52 +522,172 @@ async def translate_epub_file(input_filepath, output_filepath,
                     content_files_hrefs.append(item.get('href'))
             
             opf_dir = os.path.dirname(opf_path)
-            last_processed_llm_chapter_context = "" 
-            total_chapters = len(content_files_hrefs)
 
-            for idx, content_href in enumerate(tqdm(content_files_hrefs, desc="Translating EPUB chapters", unit="chapter")):
-                file_path_abs = os.path.join(opf_dir, content_href)
+            phase1_msg = "Phase 1: Collecting and chunking all translatable text from EPUB..."
+            if log_callback: log_callback("epub_phase1_start", phase1_msg)
+            else: print(phase1_msg)
+            
+            iterator_phase1 = tqdm(content_files_hrefs, desc="Scanning EPUB content files", unit="file") if not log_callback else content_files_hrefs
+            for file_idx, content_href in enumerate(iterator_phase1):
+                # Simple progress for phase 1 (e.g., based on files scanned)
+                # This is a rough estimate; actual translation is phase 2.
+                # Let's assume phase 1 is ~10% of the effort for progress reporting.
+                if progress_callback and len(content_files_hrefs) > 0:
+                     progress_callback( (file_idx / len(content_files_hrefs)) * 10 )
+
+
+                file_path_abs = os.path.normpath(os.path.join(opf_dir, content_href))
                 if not os.path.exists(file_path_abs):
-                    tqdm.write(f"Warning: File {content_href} not found at {file_path_abs}, skipping.")
+                    warn_msg = f"Warning: File {content_href} not found at {file_path_abs}, skipping."
+                    if log_callback: log_callback("epub_content_file_not_found", warn_msg)
+                    else: tqdm.write(warn_msg)
                     continue
-                
-                # Send progress update if callback is provided
-                if progress_callback:
-                    progress_percent = (idx / total_chapters) * 100
-                    progress_callback(progress_percent)
-                
                 try:
                     with open(file_path_abs, 'r', encoding='utf-8') as f_chap:
                         chap_str_content = f_chap.read()
                     
                     parser = etree.XMLParser(encoding='utf-8', recover=True, remove_blank_text=False)
                     doc_chap_root = etree.fromstring(chap_str_content.encode('utf-8'), parser)
-                    body_el = doc_chap_root.find('.//{http://www.w3.org/1999/xhtml}body')
-
-                    if body_el is not None:
-                        tqdm.write(f"\nTranslating chapter {idx+1}/{total_chapters}: {content_href}")
-                        last_processed_llm_chapter_context = await translate_element_preserve_structure(
-                            body_el, source_language, target_language, model_name, 
-                            cli_api_endpoint, chunk_target_lines_arg, 
-                            last_processed_llm_chapter_context,
-                            timeout, context_window
-                        )
+                    parsed_xhtml_docs[file_path_abs] = doc_chap_root 
                     
-                    with open(file_path_abs, 'wb') as f_chap_out:
-                        f_chap_out.write(etree.tostring(doc_chap_root, encoding='utf-8', xml_declaration=True, pretty_print=True))
+                    body_el = doc_chap_root.find('.//{http://www.w3.org/1999/xhtml}body')
+                    if body_el is not None:
+                        _collect_epub_translation_jobs_recursive(body_el, file_path_abs, all_translation_jobs, chunk_target_lines_arg, log_callback)
                 
                 except etree.XMLSyntaxError as e_xml:
-                    tqdm.write(f"XML Syntax Error in {content_href}: {e_xml}. Chapter skipped.")
+                    err_msg_xml = f"XML Syntax Error in {content_href}: {e_xml}. Chapter job collection skipped."
+                    if log_callback: log_callback("epub_xml_syntax_error", err_msg_xml)
+                    else: tqdm.write(err_msg_xml)
                 except Exception as e_chap:
-                    tqdm.write(f"Error processing chapter {content_href}: {e_chap}") 
+                    err_msg_chap = f"Error collecting jobs from chapter {content_href}: {e_chap}"
+                    if log_callback: log_callback("epub_collect_job_error", err_msg_chap)
+                    else: tqdm.write(err_msg_chap)
+            
+            if not all_translation_jobs:
+                info_msg_no_jobs = "No translatable text segments found in the EPUB."
+                if log_callback: log_callback("epub_no_translatable_segments", info_msg_no_jobs)
+                else: print(info_msg_no_jobs)
+                if progress_callback: progress_callback(100) # Mark as complete if nothing to do
+            else:
+                info_msg_jobs_collected = f"Collected {len(all_translation_jobs)} translatable text segments from EPUB."
+                if log_callback: log_callback("epub_jobs_collected", info_msg_jobs_collected)
+                else: print(info_msg_jobs_collected)
+            
+            if stats_callback and all_translation_jobs:
+                stats_callback({'total_chunks': len(all_translation_jobs), 'completed_chunks': 0, 'failed_chunks': 0})
 
-            # Final progress update
-            if progress_callback:
-                progress_callback(100)
+            phase2_msg = "\nPhase 2: Translating collected EPUB text segments..."
+            if log_callback: log_callback("epub_phase2_start", phase2_msg)
+            else: print(phase2_msg)
+            
+            last_successful_llm_context = ""
+            completed_jobs_count = 0
+            failed_jobs_count = 0 # Tracks segments that failed entirely or predominantly
 
-            tree.write(opf_path, encoding='utf-8', xml_declaration=True, pretty_print=True)
+            iterator_phase2 = tqdm(all_translation_jobs, desc="Translating EPUB segments", unit="segment") if not log_callback else all_translation_jobs
+            for job_idx, job in enumerate(iterator_phase2):
+                # Phase 2 takes up 90% of the progress bar (10% for phase 1)
+                if progress_callback and len(all_translation_jobs) > 0:
+                    base_progress_phase2 = ((job_idx +1) / len(all_translation_jobs)) * 90
+                    progress_callback(10 + base_progress_phase2)
 
-            print("\nCreating translated EPUB file...")
+                translated_sub_parts_for_job = []
+                current_segment_overall_context = last_successful_llm_context 
+                sub_chunk_errors = 0
+                total_sub_chunks_in_job = len(job['sub_chunks'])
+
+                for sub_chunk_idx, sub_chunk_data in enumerate(job['sub_chunks']):
+                    main_content = sub_chunk_data["main_content"]
+                    context_before = sub_chunk_data["context_before"]
+                    context_after = sub_chunk_data["context_after"]
+
+                    if not main_content.strip():
+                        translated_sub_parts_for_job.append(main_content)
+                        continue
+
+                    translated_sub_chunk_text = None
+                    current_attempts = 0
+                    while current_attempts < MAX_TRANSLATION_ATTEMPTS and translated_sub_chunk_text is None:
+                        current_attempts += 1
+                        if current_attempts > 1:
+                            retry_msg_sub = f"Retrying segment {job_idx+1}, sub-chunk {sub_chunk_idx+1} (attempt {current_attempts}/{MAX_TRANSLATION_ATTEMPTS})..."
+                            if log_callback: log_callback("epub_sub_chunk_retry", retry_msg_sub)
+                            else: tqdm.write(f"\n{retry_msg_sub}")
+                            await asyncio.sleep(RETRY_DELAY_SECONDS)
+                        
+                        translated_sub_chunk_text = await generate_translation_request(
+                            main_content, context_before, context_after,
+                            current_segment_overall_context, 
+                            source_language, target_language, model_name,
+                            api_endpoint_param=cli_api_endpoint,
+                            log_callback=log_callback # Pass log_callback
+                        )
+                    
+                    if translated_sub_chunk_text is not None:
+                        translated_sub_parts_for_job.append(translated_sub_chunk_text)
+                        words = translated_sub_chunk_text.split()
+                        if len(words) > 150: current_segment_overall_context = " ".join(words[-150:])
+                        elif translated_sub_chunk_text.strip(): current_segment_overall_context = translated_sub_chunk_text
+                    else:
+                        sub_chunk_errors += 1
+                        error_placeholder = f"[SUB_CHUNK_ERROR Seg {job_idx+1} Sub {sub_chunk_idx+1}]\n{main_content}\n[/SUB_CHUNK_ERROR]"
+                        translated_sub_parts_for_job.append(error_placeholder)
+                        current_segment_overall_context = "" 
+
+                job['translated_text'] = "\n".join(translated_sub_parts_for_job)
+                last_successful_llm_context = current_segment_overall_context 
+
+                if sub_chunk_errors > 0 : # Simple: if any sub-chunk failed, mark job as "failed" for stats
+                    failed_jobs_count += 1
+                else:
+                    completed_jobs_count += 1
+                
+                if stats_callback and all_translation_jobs:
+                     stats_callback({'completed_chunks': completed_jobs_count, 'failed_chunks': failed_jobs_count})
+
+
+            if progress_callback: progress_callback(100) # Ensure 100% at the end of phase 2
+
+            phase3_msg = "\nPhase 3: Applying translations back to EPUB content files..."
+            if log_callback: log_callback("epub_phase3_start", phase3_msg)
+            else: print(phase3_msg)
+            
+            iterator_phase3 = tqdm(all_translation_jobs, desc="Updating EPUB content", unit="segment") if not log_callback else all_translation_jobs
+            for job in iterator_phase3:
+                if job['translated_text'] is None: continue 
+
+                element = job['element_ref']
+                translated_content = job['translated_text']
+
+                if job['type'] == 'block_content':
+                    element.text = translated_content
+                    for child_node in list(element): 
+                        element.remove(child_node)
+                elif job['type'] == 'text':
+                    element.text = job['leading_space'] + translated_content + job['trailing_space']
+                elif job['type'] == 'tail':
+                    element.tail = job['leading_space'] + translated_content + job['trailing_space']
+            
+            metadata = opf_root.find('.//opf:metadata', namespaces=NAMESPACES)
+            if metadata is not None:
+                lang_el = metadata.find('.//dc:language', namespaces=NAMESPACES)
+                if lang_el is not None: lang_el.text = target_language.lower()[:2]
+
+            opf_tree.write(opf_path, encoding='utf-8', xml_declaration=True, pretty_print=True)
+
+            for file_path_abs, doc_root in parsed_xhtml_docs.items():
+                try:
+                    with open(file_path_abs, 'wb') as f_out: 
+                        f_out.write(etree.tostring(doc_root, encoding='utf-8', xml_declaration=True, pretty_print=True))
+                except Exception as e_write:
+                    err_msg_write = f"Error writing modified file {file_path_abs}: {e_write}"
+                    if log_callback: log_callback("epub_write_error", err_msg_write)
+                    else: tqdm.write(err_msg_write)
+
+
+            final_zip_msg = "\nCreating translated EPUB file..."
+            if log_callback: log_callback("epub_zip_start", final_zip_msg)
+            else: print(final_zip_msg)
             with zipfile.ZipFile(output_filepath, 'w', zipfile.ZIP_DEFLATED) as epub_zip:
                 mimetype_path_abs = os.path.join(temp_dir, 'mimetype')
                 if os.path.exists(mimetype_path_abs):
@@ -594,38 +696,45 @@ async def translate_epub_file(input_filepath, output_filepath,
                 for root_path, _, files_in_root in os.walk(temp_dir):
                     for file_item in files_in_root:
                         if file_item != 'mimetype':
-                            file_path_abs = os.path.join(root_path, file_item)
-                            arcname = os.path.relpath(file_path_abs, temp_dir)
-                            epub_zip.write(file_path_abs, arcname)
-            print(f"Translated EPUB saved to '{output_filepath}'")
+                            file_path_abs_for_zip = os.path.join(root_path, file_item)
+                            arcname = os.path.relpath(file_path_abs_for_zip, temp_dir)
+                            epub_zip.write(file_path_abs_for_zip, arcname)
+            
+            success_save_msg = f"Translated EPUB saved to '{output_filepath}'"
+            if log_callback: log_callback("epub_save_success", success_save_msg)
+            else: print(success_save_msg)
 
         except Exception as e_epub:
-            print(f"Major error processing EPUB file '{input_filepath}': {e_epub}")
+            major_err_msg = f"Major error processing EPUB file '{input_filepath}': {e_epub}"
+            if log_callback: log_callback("epub_major_error", major_err_msg)
+            else: print(major_err_msg)
             import traceback
-            traceback.print_exc()
+            if log_callback: log_callback("epub_major_error_traceback", traceback.format_exc())
+            else: traceback.print_exc()
+
 
 async def translate_file(input_filepath, output_filepath,
                          source_language="English", target_language="French",
                          model_name=DEFAULT_MODEL, chunk_target_size_cli=MAIN_LINES_PER_CHUNK,
-                         cli_api_endpoint=API_ENDPOINT, timeout=REQUEST_TIMEOUT,
-                         context_window=OLLAMA_NUM_CTX, max_attempts=MAX_TRANSLATION_ATTEMPTS,
-                         retry_delay=RETRY_DELAY_SECONDS):
+                         cli_api_endpoint=API_ENDPOINT,
+                         progress_callback=None, log_callback=None, stats_callback=None): # Added callbacks
     _, ext = os.path.splitext(input_filepath.lower())
     
     if ext == '.epub':
         await translate_epub_file(input_filepath, output_filepath,
                                   source_language, target_language,
                                   model_name, chunk_target_size_cli, 
-                                  cli_api_endpoint, timeout,
-                                  context_window, max_attempts,
-                                  retry_delay)
-    else:
-        await translate_text_file(input_filepath, output_filepath,
-                                  source_language, target_language,
-                                  model_name, chunk_target_size_cli, 
-                                  cli_api_endpoint, timeout,
-                                  context_window, max_attempts,
-                                  retry_delay)
+                                  cli_api_endpoint,
+                                  progress_callback, log_callback, stats_callback) 
+    else: 
+        # Use the refactored text file translation function
+        await translate_text_file_with_callbacks(
+            input_filepath, output_filepath,
+            source_language, target_language,
+            model_name, chunk_target_size_cli,
+            cli_api_endpoint,
+            progress_callback, log_callback, stats_callback
+        )
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Translate a text or EPUB file using an LLM.")
@@ -636,30 +745,23 @@ if __name__ == "__main__":
     parser.add_argument("-m", "--model", default=DEFAULT_MODEL, help=f"LLM model (default: {DEFAULT_MODEL}).")
     parser.add_argument("-cs", "--chunksize", type=int, default=MAIN_LINES_PER_CHUNK, help=f"Target lines per chunk (default: {MAIN_LINES_PER_CHUNK}).")
     parser.add_argument("--api_endpoint", default=API_ENDPOINT, help=f"Ollama API endpoint (default: {API_ENDPOINT}).")
-    parser.add_argument("--timeout", type=int, default=REQUEST_TIMEOUT, help=f"Request timeout in seconds (default: {REQUEST_TIMEOUT}).")
-    parser.add_argument("--context_window", type=int, default=OLLAMA_NUM_CTX, help=f"Context window size (default: {OLLAMA_NUM_CTX}).")
-    parser.add_argument("--max_attempts", type=int, default=MAX_TRANSLATION_ATTEMPTS, help=f"Max translation attempts per chunk (default: {MAX_TRANSLATION_ATTEMPTS}).")
-    parser.add_argument("--retry_delay", type=int, default=RETRY_DELAY_SECONDS, help=f"Retry delay in seconds (default: {RETRY_DELAY_SECONDS}).")
-    parser.add_argument("--debug", action="store_true", help="Enable debug mode to show LLM requests.")
 
     args = parser.parse_args()
 
-    # Set debug mode
-    DEBUG_MODE = args.debug
-
     if args.output is None:
         base, ext = os.path.splitext(args.input)
-        args.output = f"{base}_translated_{args.target_lang.lower()}{ext}"
+        output_ext = ext
+        if args.input.lower().endswith('.epub'):
+            output_ext = '.epub'
+        args.output = f"{base}_translated_{args.target_lang.lower()}{output_ext}"
+
 
     file_type_msg = "EPUB" if args.input.lower().endswith('.epub') else "text"
     print(f"Starting {file_type_msg} translation from '{args.input}' ({args.source_lang}) to '{args.output}' ({args.target_lang}) using model {args.model}.")
     print(f"Main content target per chunk: {args.chunksize} lines.")
     print(f"Using API Endpoint: {args.api_endpoint}")
-    if DEBUG_MODE:
-        print("Debug mode: ENABLED (LLM requests will be displayed)")
-    else:
-        print("Debug mode: DISABLED (use --debug to enable)")
 
+    # When running from CLI, callbacks are None.
     asyncio.run(translate_file(
         args.input,
         args.output,
@@ -668,8 +770,7 @@ if __name__ == "__main__":
         args.model,
         chunk_target_size_cli=args.chunksize,
         cli_api_endpoint=args.api_endpoint,
-        timeout=args.timeout,
-        context_window=args.context_window,
-        max_attempts=args.max_attempts,
-        retry_delay=args.retry_delay
+        progress_callback=None, 
+        log_callback=None, 
+        stats_callback=None 
     ))
