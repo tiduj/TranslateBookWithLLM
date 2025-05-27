@@ -12,6 +12,7 @@ from lxml import etree
 import html
 
 # --- Configuration ---
+API_ENDPOINT = "http://localhost:11434/api/generate"
 DEFAULT_MODEL = "mistral-small:24b"
 MAIN_LINES_PER_CHUNK = 25
 REQUEST_TIMEOUT = 60
