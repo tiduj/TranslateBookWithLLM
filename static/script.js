@@ -157,6 +157,8 @@ async function loadAvailableModels() {
         modelSelect.innerHTML = '';
 
         if (data.models && data.models.length > 0) {
+            showMessage('', '');
+
             data.models.forEach(modelName => {
                 const option = document.createElement('option');
                 option.value = modelName; option.textContent = modelName;
@@ -167,7 +169,7 @@ async function loadAvailableModels() {
         } else {
             const errorMessage = data.error || 'No LLM models available. Ensure Ollama is running and accessible.';
             showMessage(`⚠️ ${errorMessage}`, 'error');
-            
+
             modelSelect.innerHTML = '<option value="">Check connection !</option>';
             addLog(`⚠️ No models available from Ollama at ${currentApiEp}`);
         }

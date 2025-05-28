@@ -65,7 +65,7 @@ def get_adjusted_start_index(all_lines, intended_start_idx, max_look_back_lines=
 def get_adjusted_end_index(all_lines, intended_end_idx, max_look_forward_lines=20):
     if intended_end_idx >= len(all_lines):
         return len(all_lines)
-    
+
     start_search_fwd = intended_end_idx - 1
     if start_search_fwd < 0: start_search_fwd = 0
 
@@ -73,7 +73,7 @@ def get_adjusted_end_index(all_lines, intended_end_idx, max_look_forward_lines=2
         line_content_stripped = all_lines[i].strip()
         if line_content_stripped and line_content_stripped.endswith(SENTENCE_TERMINATORS):
             return i + 1
-            
+
     if intended_end_idx + max_look_forward_lines >= len(all_lines):
         return len(all_lines)
     return intended_end_idx
@@ -84,7 +84,41 @@ def split_text_into_chunks_with_context(text, main_lines_per_chunk_target):
     except Exception:
         processed_text = text
 
-    all_lines = processed_text.splitlines()
+    original_raw_lines = processed_text.splitlines()
+    refined_all_lines = []
+
+    if original_raw_lines:
+        sorted_terminators = sorted(list(SENTENCE_TERMINATORS), key=len, reverse=True)
+        escaped_terminators = [re.escape(t) for t in sorted_terminators]
+        sentence_splitting_pattern = '|'.join(escaped_terminators)
+
+        for line_text in original_raw_lines:
+            if not line_text.strip():
+                refined_all_lines.append(line_text)
+                continue
+
+            current_segments = []
+            last_split_end = 0
+            for match in re.finditer(sentence_splitting_pattern, line_text):
+                match_start, match_end = match.span()
+                segment = line_text[last_split_end:match_end]
+                if segment.strip():
+                    current_segments.append(segment)
+                last_split_end = match_end
+
+            remaining_part = line_text[last_split_end:]
+            if remaining_part.strip():
+                current_segments.append(remaining_part)
+
+            if not current_segments and line_text.strip():
+                refined_all_lines.append(line_text)
+            else:
+                if current_segments:
+                    refined_all_lines.extend(current_segments)
+                elif not refined_all_lines or refined_all_lines[-1].strip() or line_text:
+                    refined_all_lines.append(line_text)
+                    
+    all_lines = refined_all_lines
     structured_chunks = []
     if not all_lines:
         return []
@@ -101,31 +135,31 @@ def split_text_into_chunks_with_context(text, main_lines_per_chunk_target):
 
         final_main_start_index = get_adjusted_start_index(all_lines, initial_main_start_index, look_back_main_limit)
         final_main_end_index = get_adjusted_end_index(all_lines, initial_main_end_index, look_forward_main_limit)
-        
+
         if final_main_start_index > final_main_end_index:
             final_main_start_index = initial_main_start_index
             final_main_end_index = initial_main_end_index
 
         if final_main_end_index <= final_main_start_index:
-            if initial_main_start_index < len(all_lines): 
-                if initial_main_end_index > initial_main_start_index : 
+            if initial_main_start_index < len(all_lines):
+                if initial_main_end_index > initial_main_start_index :
                     final_main_start_index = initial_main_start_index
                     final_main_end_index = initial_main_end_index
-                else: 
+                else:
                     final_main_start_index = initial_main_start_index
-                    final_main_end_index = len(all_lines) 
-            else: 
-                break 
+                    final_main_end_index = len(all_lines)
+            else:
+                break
 
         main_part_lines = all_lines[final_main_start_index:final_main_end_index]
 
         if not main_part_lines and final_main_start_index < len(all_lines):
             current_position = final_main_start_index + 1
             continue
-        
+
         if not main_part_lines:
             break
-        
+
         context_target_line_count_before = main_lines_per_chunk_target // 4
         intended_context_before_end_idx = final_main_start_index
         intended_context_before_start_idx = max(0, intended_context_before_end_idx - context_target_line_count_before)
@@ -146,11 +180,11 @@ def split_text_into_chunks_with_context(text, main_lines_per_chunk_target):
             succeeding_context_lines = all_lines[final_context_after_start_idx:final_context_after_end_idx]
         else:
             succeeding_context_lines = []
-        
+
         if not "".join(main_part_lines).strip():
             current_position = final_main_end_index
             if current_position <= initial_main_start_index :
-                current_position = initial_main_start_index + 1 
+                current_position = initial_main_start_index + 1
             continue
 
         structured_chunks.append({
@@ -161,7 +195,7 @@ def split_text_into_chunks_with_context(text, main_lines_per_chunk_target):
 
         current_position = final_main_end_index
         if current_position <= initial_main_start_index :
-            current_position = initial_main_start_index + 1 
+            current_position = initial_main_start_index + 1
     return structured_chunks
 
 async def generate_translation_request(main_content, context_before, context_after, previous_translation_context,
@@ -411,7 +445,7 @@ async def translate_text_file_with_callbacks(input_filepath, output_filepath,
     except Exception as e:
         err_msg = f"ERROR: Saving output file '{output_filepath}': {e}"
         if log_callback: log_callback("txt_save_error", err_msg)
-        else: print(err_msg) 
+        else: print(err_msg)
 
 def _collect_epub_translation_jobs_recursive(element, file_path_abs, jobs_list, chunk_size, log_callback=None):
     if element.tag in IGNORED_TAGS_EPUB:
@@ -421,18 +455,19 @@ def _collect_epub_translation_jobs_recursive(element, file_path_abs, jobs_list, 
         text_content_for_chunking = "".join(element.itertext()).strip()
         if text_content_for_chunking:
             sub_chunks = split_text_into_chunks_with_context(text_content_for_chunking, chunk_size)
-            if not sub_chunks: 
+            if not sub_chunks and text_content_for_chunking:
                 sub_chunks = [{"context_before": "", "main_content": text_content_for_chunking, "context_after": ""}]
-            
-            jobs_list.append({
-                'element_ref': element, 'type': 'block_content',
-                'original_text_stripped': text_content_for_chunking,
-                'sub_chunks': sub_chunks, 'file_path': file_path_abs, 'translated_text': None
-            })
-        for child in element: 
-            if child.tag in CONTENT_BLOCK_TAGS_EPUB:
-                    _collect_epub_translation_jobs_recursive(child, file_path_abs, jobs_list, chunk_size, log_callback)
-        return 
+
+            if sub_chunks:
+                jobs_list.append({
+                    'element_ref': element,
+                    'type': 'block_content',
+                    'original_text_stripped': text_content_for_chunking,
+                    'sub_chunks': sub_chunks,
+                    'file_path': file_path_abs,
+                    'translated_text': None
+                })
+        return
 
     if element.text:
         original_text_content = element.text
@@ -441,14 +476,20 @@ def _collect_epub_translation_jobs_recursive(element, file_path_abs, jobs_list, 
             leading_space = original_text_content[:len(original_text_content) - len(original_text_content.lstrip())]
             trailing_space = original_text_content[len(original_text_content.rstrip()):]
             sub_chunks = split_text_into_chunks_with_context(text_to_translate, chunk_size)
-            if not sub_chunks:
+            if not sub_chunks and text_to_translate:
                 sub_chunks = [{"context_before": "", "main_content": text_to_translate, "context_after": ""}]
-            jobs_list.append({
-                'element_ref': element, 'type': 'text',
-                'original_text_stripped': text_to_translate, 'sub_chunks': sub_chunks,
-                'leading_space': leading_space, 'trailing_space': trailing_space,
-                'file_path': file_path_abs, 'translated_text': None
-            })
+
+            if sub_chunks:
+                jobs_list.append({
+                    'element_ref': element,
+                    'type': 'text',
+                    'original_text_stripped': text_to_translate,
+                    'sub_chunks': sub_chunks,
+                    'leading_space': leading_space,
+                    'trailing_space': trailing_space,
+                    'file_path': file_path_abs,
+                    'translated_text': None
+                })
 
     for child in element:
         _collect_epub_translation_jobs_recursive(child, file_path_abs, jobs_list, chunk_size, log_callback)
@@ -460,15 +501,21 @@ def _collect_epub_translation_jobs_recursive(element, file_path_abs, jobs_list, 
             leading_space_tail = original_tail_content[:len(original_tail_content) - len(original_tail_content.lstrip())]
             trailing_space_tail = original_tail_content[len(original_tail_content.rstrip()):]
             sub_chunks = split_text_into_chunks_with_context(tail_to_translate, chunk_size)
-            if not sub_chunks:
+            if not sub_chunks and tail_to_translate:
                 sub_chunks = [{"context_before": "", "main_content": tail_to_translate, "context_after": ""}]
-            jobs_list.append({
-                'element_ref': element, 'type': 'tail',
-                'original_text_stripped': tail_to_translate, 'sub_chunks': sub_chunks,
-                'leading_space': leading_space_tail, 'trailing_space': trailing_space_tail,
-                'file_path': file_path_abs, 'translated_text': None
-            })
 
+            if sub_chunks:
+                jobs_list.append({
+                    'element_ref': element,
+                    'type': 'tail',
+                    'original_text_stripped': tail_to_translate,
+                    'sub_chunks': sub_chunks,
+                    'leading_space': leading_space_tail,
+                    'trailing_space': trailing_space_tail,
+                    'file_path': file_path_abs,
+                    'translated_text': None
+                })
+                
 async def translate_epub_file(input_filepath, output_filepath,
                                source_language="English", target_language="French",
                                model_name=DEFAULT_MODEL, chunk_target_lines_arg=MAIN_LINES_PER_CHUNK,
