@@ -174,8 +174,9 @@ def upload_file():
         return jsonify({"error": "No selected file"}), 400
     
     filename = file.filename.lower()
-    if not (filename.endswith('.txt') or filename.endswith('.epub')):
-        return jsonify({"error": "Only .txt and .epub files are supported"}), 400
+    file_type = "txt"
+    if filename.endswith('.epub'):
+        file_type = "epub"
     
     upload_dir = os.path.join(OUTPUT_DIR, 'uploads')
     if not os.path.exists(upload_dir):
@@ -189,16 +190,10 @@ def upload_file():
         file.save(file_path)
         file_size = os.path.getsize(file_path)
 
-        if filename.endswith('.txt'):
-            return jsonify({
-                "success": True, "file_path": file_path, "filename": file.filename,
-                "file_type": "txt", "size": file_size
-            })
-        else:
-            return jsonify({
-                "success": True, "file_path": file_path, "filename": file.filename,
-                "file_type": "epub", "size": file_size
-            })
+        return jsonify({
+            "success": True, "file_path": file_path, "filename": file.filename,
+            "file_type": file_type, "size": file_size
+        })
     
     except Exception as e:
         return jsonify({"error": f"Failed to save file: {str(e)}"}), 500

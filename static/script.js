@@ -186,11 +186,7 @@ fileUploadArea.addEventListener('drop', (e) => {
     const files = e.dataTransfer.files;
     if (files.length > 0) {
         Array.from(files).forEach(file => {
-            if (file.type === 'text/plain' || file.name.toLowerCase().endsWith('.epub')) {
-                addFileToList(file);
-            } else {
-                showMessage(`File '${file.name}' is not a .txt or .epub file and was skipped.`, 'error');
-            }
+            addFileToList(file); 
         });
         updateFileDisplay();
     }
@@ -215,11 +211,7 @@ function handleFileSelect(e) {
     const files = e.target.files;
     if (files.length > 0) {
         Array.from(files).forEach(file => {
-            if (file.type === 'text/plain' || file.name.toLowerCase().endsWith('.epub')) {
-                addFileToList(file);
-            } else {
-                showMessage(`File '${file.name}' is not a .txt or .epub file and was skipped.`, 'error');
-            }
+            addFileToList(file); 
         });
         updateFileDisplay();
     }
@@ -235,61 +227,52 @@ async function addFileToList(file) {
     const fileExtension = file.name.split('.').pop().toLowerCase();
     const originalNameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
     const outputPattern = document.getElementById('outputFilenamePattern').value || "translated_{originalName}.{ext}";
+    
+    let processingFileType = 'txt'; 
+    if (fileExtension === 'epub') {
+        processingFileType = 'epub';
+    }
+    
     const outputFilename = outputPattern
         .replace("{originalName}", originalNameWithoutExt)
-        .replace("{ext}", fileExtension);
+        .replace("{ext}", fileExtension); 
 
-    if (fileExtension === 'epub') {
-        showMessage(`Uploading EPUB file: ${file.name}...`, 'info');
+    showMessage(`Uploading file: ${file.name}...`, 'info');
         
-        const formData = new FormData();
-        formData.append('file', file);
+    const formData = new FormData();
+    formData.append('file', file);
         
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/upload`, {
-                method: 'POST',
-                body: formData
-            });
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/upload`, {
+            method: 'POST',
+            body: formData
+        });
             
-            if (!response.ok) {
-                throw new Error(`Upload failed: ${response.statusText}`);
-            }
-            
-            const uploadResult = await response.json();
-            
-            filesToProcess.push({
-                name: file.name,
-                filePath: uploadResult.file_path,
-                fileType: 'epub',
-                status: 'Queued',
-                outputFilename: outputFilename,
-                size: file.size,
-                translationId: null,
-                result: null
-            });
-            
-            showMessage(`EPUB file '${file.name}' uploaded successfully.`, 'success');
-            updateFileDisplay();
-            
-        } catch (error) {
-            showMessage(`Failed to upload EPUB file '${file.name}': ${error.message}`, 'error');
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `Upload failed: ${response.statusText}`);
         }
-    } else {
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            filesToProcess.push({
-                name: file.name,
-                content: e.target.result,
-                fileType: 'txt',
-                status: 'Queued',
-                outputFilename: outputFilename,
-                size: file.size,
-                translationId: null,
-                result: null
-            });
-            updateFileDisplay();
-        };
-        reader.readAsText(file);
+            
+        const uploadResult = await response.json();
+            
+        filesToProcess.push({
+            name: file.name,
+            filePath: uploadResult.file_path,      
+            fileType: uploadResult.file_type,      
+            originalExtension: fileExtension,      
+            status: 'Queued',
+            outputFilename: outputFilename,
+            size: file.size,
+            translationId: null,
+            result: null,
+            content: null 
+        });
+            
+        showMessage(`File '${file.name}' (${uploadResult.file_type}) uploaded. Path: ${uploadResult.file_path}`, 'success');
+        updateFileDisplay();
+            
+    } catch (error) {
+        showMessage(`Failed to upload file '${file.name}': ${error.message}`, 'error');
     }
 }
 
@@ -302,8 +285,7 @@ function updateFileDisplay() {
             const li = document.createElement('li');
             li.setAttribute('data-filename', file.name);
             
-            const fileIcon = file.fileType === 'epub' ? '📚' : '📄';
-            li.textContent = `${fileIcon} ${file.name} (${(file.size / 1024).toFixed(2)} KB) `;
+            const fileIcon = file.fileType === 'epub' ? '📚' : '📄';             li.textContent = `${fileIcon} ${file.name} (${(file.size / 1024).toFixed(2)} KB) `;
             
             const statusSpan = document.createElement('span');
             statusSpan.className = 'file-status';
@@ -469,9 +451,29 @@ async function processNextFileInQueue() {
     };
 
     if (fileToTranslate.fileType === 'epub') {
+        if (!fileToTranslate.filePath) {
+             addLog(`❌ Critical Error: EPUB file ${fileToTranslate.name} has no server path. Upload might have failed silently or logic error.`);
+             showMessage(`Cannot process EPUB ${fileToTranslate.name}: server path missing.`, 'error');
+             updateFileStatusInList(fileToTranslate.name, 'Path Error');
+             currentProcessingJob = null; 
+             processNextFileInQueue(); 
+             return;
+        }
         config.file_path = fileToTranslate.filePath;
-    } else {
-        config.text = fileToTranslate.content;
+    } else { 
+        if (fileToTranslate.content) {
+            config.text = fileToTranslate.content; 
+        } else {
+            if (!fileToTranslate.filePath) {
+                 addLog(`❌ Critical Error: TXT file ${fileToTranslate.name} has no server path and no direct content. Upload might have failed or logic error.`);
+                 showMessage(`Cannot process TXT file ${fileToTranslate.name}: server path or content missing.`, 'error');
+                 updateFileStatusInList(fileToTranslate.name, 'Input Error');
+                 currentProcessingJob = null;
+                 processNextFileInQueue();
+                 return;
+            }
+            config.file_path = fileToTranslate.filePath;
+        }
     }
 
     try {
