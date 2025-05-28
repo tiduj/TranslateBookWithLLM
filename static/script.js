@@ -157,8 +157,7 @@ async function loadAvailableModels() {
         modelSelect.innerHTML = '';
 
         if (data.models && data.models.length > 0) {
-            // Clear any previous error messages if models are loaded successfully
-            showMessage('', ''); // <--- ADD THIS LINE
+            showMessage('', '');
 
             data.models.forEach(modelName => {
                 const option = document.createElement('option');
@@ -169,15 +168,13 @@ async function loadAvailableModels() {
             addLog(`✅ ${data.count} LLM model(s) loaded. Default: ${data.default}`);
         } else {
             const errorMessage = data.error || 'No LLM models available. Ensure Ollama is running and accessible.';
-            // Display the error message if models are not available
-            showMessage(`⚠️ ${errorMessage}`, 'error'); // This line was already here and is correct for this case
+            showMessage(`⚠️ ${errorMessage}`, 'error');
 
             modelSelect.innerHTML = '<option value="">Check connection !</option>';
             addLog(`⚠️ No models available from Ollama at ${currentApiEp}`);
         }
     } catch (error) {
-        // Display the error message if fetching models fails
-        showMessage(`❌ Error fetching models: ${error.message}`, 'error'); // This line was already here and is correct
+        showMessage(`❌ Error fetching models: ${error.message}`, 'error');
         addLog(`❌ Failed to retrieve model list: ${error.message}`);
         modelSelect.innerHTML = '<option value="">Error loading models - Check Ollama</option>';
     }

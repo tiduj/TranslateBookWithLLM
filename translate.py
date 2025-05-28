@@ -411,7 +411,7 @@ async def translate_text_file_with_callbacks(input_filepath, output_filepath,
     except Exception as e:
         err_msg = f"ERROR: Saving output file '{output_filepath}': {e}"
         if log_callback: log_callback("txt_save_error", err_msg)
-        else: print(err_msg) 
+        else: print(err_msg)
 
 def _collect_epub_translation_jobs_recursive(element, file_path_abs, jobs_list, chunk_size, log_callback=None):
     if element.tag in IGNORED_TAGS_EPUB:
@@ -421,18 +421,19 @@ def _collect_epub_translation_jobs_recursive(element, file_path_abs, jobs_list, 
         text_content_for_chunking = "".join(element.itertext()).strip()
         if text_content_for_chunking:
             sub_chunks = split_text_into_chunks_with_context(text_content_for_chunking, chunk_size)
-            if not sub_chunks: 
+            if not sub_chunks and text_content_for_chunking:
                 sub_chunks = [{"context_before": "", "main_content": text_content_for_chunking, "context_after": ""}]
-            
-            jobs_list.append({
-                'element_ref': element, 'type': 'block_content',
-                'original_text_stripped': text_content_for_chunking,
-                'sub_chunks': sub_chunks, 'file_path': file_path_abs, 'translated_text': None
-            })
-        for child in element: 
-            if child.tag in CONTENT_BLOCK_TAGS_EPUB:
-                    _collect_epub_translation_jobs_recursive(child, file_path_abs, jobs_list, chunk_size, log_callback)
-        return 
+
+            if sub_chunks:
+                jobs_list.append({
+                    'element_ref': element,
+                    'type': 'block_content',
+                    'original_text_stripped': text_content_for_chunking,
+                    'sub_chunks': sub_chunks,
+                    'file_path': file_path_abs,
+                    'translated_text': None
+                })
+        return
 
     if element.text:
         original_text_content = element.text
@@ -441,14 +442,20 @@ def _collect_epub_translation_jobs_recursive(element, file_path_abs, jobs_list, 
             leading_space = original_text_content[:len(original_text_content) - len(original_text_content.lstrip())]
             trailing_space = original_text_content[len(original_text_content.rstrip()):]
             sub_chunks = split_text_into_chunks_with_context(text_to_translate, chunk_size)
-            if not sub_chunks:
+            if not sub_chunks and text_to_translate:
                 sub_chunks = [{"context_before": "", "main_content": text_to_translate, "context_after": ""}]
-            jobs_list.append({
-                'element_ref': element, 'type': 'text',
-                'original_text_stripped': text_to_translate, 'sub_chunks': sub_chunks,
-                'leading_space': leading_space, 'trailing_space': trailing_space,
-                'file_path': file_path_abs, 'translated_text': None
-            })
+
+            if sub_chunks:
+                jobs_list.append({
+                    'element_ref': element,
+                    'type': 'text',
+                    'original_text_stripped': text_to_translate,
+                    'sub_chunks': sub_chunks,
+                    'leading_space': leading_space,
+                    'trailing_space': trailing_space,
+                    'file_path': file_path_abs,
+                    'translated_text': None
+                })
 
     for child in element:
         _collect_epub_translation_jobs_recursive(child, file_path_abs, jobs_list, chunk_size, log_callback)
@@ -460,15 +467,21 @@ def _collect_epub_translation_jobs_recursive(element, file_path_abs, jobs_list, 
             leading_space_tail = original_tail_content[:len(original_tail_content) - len(original_tail_content.lstrip())]
             trailing_space_tail = original_tail_content[len(original_tail_content.rstrip()):]
             sub_chunks = split_text_into_chunks_with_context(tail_to_translate, chunk_size)
-            if not sub_chunks:
+            if not sub_chunks and tail_to_translate:
                 sub_chunks = [{"context_before": "", "main_content": tail_to_translate, "context_after": ""}]
-            jobs_list.append({
-                'element_ref': element, 'type': 'tail',
-                'original_text_stripped': tail_to_translate, 'sub_chunks': sub_chunks,
-                'leading_space': leading_space_tail, 'trailing_space': trailing_space_tail,
-                'file_path': file_path_abs, 'translated_text': None
-            })
 
+            if sub_chunks:
+                jobs_list.append({
+                    'element_ref': element,
+                    'type': 'tail',
+                    'original_text_stripped': tail_to_translate,
+                    'sub_chunks': sub_chunks,
+                    'leading_space': leading_space_tail,
+                    'trailing_space': trailing_space_tail,
+                    'file_path': file_path_abs,
+                    'translated_text': None
+                })
+                
 async def translate_epub_file(input_filepath, output_filepath,
                                source_language="English", target_language="French",
                                model_name=DEFAULT_MODEL, chunk_target_lines_arg=MAIN_LINES_PER_CHUNK,
