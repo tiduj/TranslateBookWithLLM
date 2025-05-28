@@ -20,8 +20,8 @@ OLLAMA_NUM_CTX = 2048
 SENTENCE_TERMINATORS = tuple(list(".!?") + ['."', '?"', '!"', '.”', ".'", "?'", "!'", ":", ".)"])
 MAX_TRANSLATION_ATTEMPTS = 2
 RETRY_DELAY_SECONDS = 2
-TRANSLATE_TAG_IN = "[START]"
-TRANSLATE_TAG_OUT = "[END]"
+TRANSLATE_TAG_IN = "[TRANSLATED]"
+TRANSLATE_TAG_OUT = "[/TRANSLATED]"
 
 NAMESPACES = {
     'opf': 'http://www.idpf.org/2007/opf',
@@ -182,7 +182,7 @@ async def generate_translation_request(main_content, context_before, context_aft
 + Maintain the original layout of the text
 
 ## FORMATING
-+ Translate ONLY the text enclosed within the tags "[START TO TRANSLATE]" and "[END TO TRANSLATE]" from {source_lang} into {target_language}
++ Translate ONLY the text enclosed within the tags "[TO TRANSLATE]" and "[/TO TRANSLATE]" from {source_lang} into {target_language}
 + Surround your translation with {TRANSLATE_TAG_IN} and {TRANSLATE_TAG_OUT} tags. For example: {TRANSLATE_TAG_IN}Your text translated here.{TRANSLATE_TAG_OUT}
 + Return ONLY the translation, formatted as requested
 """
@@ -197,9 +197,9 @@ async def generate_translation_request(main_content, context_before, context_aft
 """
     
     text_to_translate_block = f"""
-[START TO TRANSLATE]
+[TO TRANSLATE]
 {main_content}
-[END TO TRANSLATE]"""
+[/TO TRANSLATE]"""
 
     structured_prompt_parts = [
         role_and_instructions_block,
