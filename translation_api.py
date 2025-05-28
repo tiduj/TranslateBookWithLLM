@@ -1,4 +1,3 @@
-# translation_api.py
 import requests
 import os
 import asyncio
@@ -12,7 +11,7 @@ import tempfile
 
 try:
     from translate import (
-        translate_epub_file, # MODIFIED: No longer need to import translate_file directly for this logic
+        translate_epub_file,
         translate_text_file_with_callbacks,
         API_ENDPOINT as DEFAULT_OLLAMA_API_ENDPOINT,
         DEFAULT_MODEL,
@@ -72,7 +71,7 @@ def get_available_models():
 
             return jsonify({
                 "models": model_names,
-                "default": DEFAULT_MODEL if DEFAULT_MODEL in model_names else (model_names[0] if model_names else DEFAULT_MODEL),
+                "default": DEFAULT_MODEL if DEFAULT_MODEL in model_names else (model_names[0] if model_names else DEFAULT_names[0]),
                 "status": "ollama_connected",
                 "count": len(model_names)
             })
@@ -148,7 +147,7 @@ def start_translation_request():
         'logs': [f"[{datetime.now().strftime('%H:%M:%S')}] Translation {translation_id} queued."],
         'result': None,
         'config': config,
-        'interrupted': False, # Ensure this is initialized
+        'interrupted': False,
         'output_filepath': None
     }
 
@@ -175,8 +174,9 @@ def upload_file():
         return jsonify({"error": "No selected file"}), 400
     
     filename = file.filename.lower()
-    if not (filename.endswith('.txt') or filename.endswith('.epub')):
-        return jsonify({"error": "Only .txt and .epub files are supported"}), 400
+    file_type = "txt"
+    if filename.endswith('.epub'):
+        file_type = "epub"
     
     upload_dir = os.path.join(OUTPUT_DIR, 'uploads')
     if not os.path.exists(upload_dir):
@@ -190,16 +190,10 @@ def upload_file():
         file.save(file_path)
         file_size = os.path.getsize(file_path)
 
-        if filename.endswith('.txt'):
-            return jsonify({
-                "success": True, "file_path": file_path, "filename": file.filename,
-                "file_type": "txt", "size": file_size
-            })
-        else:
-            return jsonify({
-                "success": True, "file_path": file_path, "filename": file.filename,
-                "file_type": "epub", "size": file_size
-            })
+        return jsonify({
+            "success": True, "file_path": file_path, "filename": file.filename,
+            "file_type": file_type, "size": file_size
+        })
     
     except Exception as e:
         return jsonify({"error": f"Failed to save file: {str(e)}"}), 500
@@ -230,7 +224,6 @@ async def perform_actual_translation(translation_id, config):
     active_translations[translation_id]['status'] = 'running'
     emit_update(translation_id, {'status': 'running', 'log': 'Translation task started by worker.'})
 
-    # MODIFIED: Define interruption check callback
     def should_interrupt_current_task():
         if translation_id in active_translations and active_translations[translation_id].get('interrupted', False):
             _log_message_callback("interruption_check", f"Interruption signal detected for job {translation_id}. Halting processing.")
@@ -241,13 +234,17 @@ async def perform_actual_translation(translation_id, config):
         timestamp = datetime.now().strftime('%H:%M:%S')
         full_log_entry = f"[{timestamp}] {message_content}"
 
-        if 'logs' not in active_translations[translation_id]: active_translations[translation_id]['logs'] = []
-        active_translations[translation_id]['logs'].append(full_log_entry)
-        emit_update(translation_id, {'log': message_content})
+        print(full_log_entry)
+
+        if message_key_from_translate_module in ["llm_prompt_debug", "llm_raw_response_preview"]:
+            pass
+        else:
+            if 'logs' not in active_translations[translation_id]: active_translations[translation_id]['logs'] = []
+            active_translations[translation_id]['logs'].append(full_log_entry)
+            emit_update(translation_id, {'log': message_content})
 
     def _update_translation_progress_callback(progress_percent):
         if translation_id in active_translations:
-            # Only update progress if not interrupted, to avoid overriding final interrupted state's progress display
             if not active_translations[translation_id].get('interrupted', False):
                 active_translations[translation_id]['progress'] = progress_percent
             emit_update(translation_id, {'progress': active_translations[translation_id]['progress']})
@@ -289,7 +286,7 @@ async def perform_actual_translation(translation_id, config):
                 progress_callback=_update_translation_progress_callback,
                 log_callback=_log_message_callback,
                 stats_callback=_update_translation_stats_callback,
-                check_interruption_callback=should_interrupt_current_task # MODIFIED: Pass callback
+                check_interruption_callback=should_interrupt_current_task
             )
             active_translations[translation_id]['result'] = "[EPUB file translated - download to view]"
             
@@ -316,12 +313,12 @@ async def perform_actual_translation(translation_id, config):
                 progress_callback=_update_translation_progress_callback,
                 log_callback=_log_message_callback,
                 stats_callback=_update_translation_stats_callback,
-                check_interruption_callback=should_interrupt_current_task # MODIFIED: Pass callback
+                check_interruption_callback=should_interrupt_current_task
             )
-            if os.path.exists(output_filepath_on_server):
-                with open(output_filepath_on_server, 'r', encoding='utf-8') as f_res:
-                    active_translations[translation_id]['result'] = f_res.read()
-            else: # Could happen if interruption occurred before any file write
+
+            if os.path.exists(output_filepath_on_server) and active_translations[translation_id].get('status') not in ['error', 'interrupted_before_save']: # Assuming a status if save fails
+                active_translations[translation_id]['result'] = "[TXT file translated - content available for download]"
+            elif not os.path.exists(output_filepath_on_server):
                 active_translations[translation_id]['result'] = "[TXT file (partially) translated - content not loaded for preview or write failed]"
 
             if temp_txt_file_path and os.path.exists(temp_txt_file_path):
@@ -330,13 +327,11 @@ async def perform_actual_translation(translation_id, config):
             _log_message_callback("unknown_file_type", f"❌ Unknown file type: {config['file_type']}")
             raise Exception(f"Unsupported file type: {config['file_type']}")
 
-        # This log might be slightly misleading if interrupted, as it implies full save.
-        # The translate.py functions now log "Full/Partial"
         _log_message_callback("save_process_info", f"💾 Translation process ended. File saved (or partially saved) at: {output_filepath_on_server}")
         active_translations[translation_id]['output_filepath'] = output_filepath_on_server
 
         elapsed_time = time.time() - active_translations[translation_id]['stats'].get('start_time', time.time())
-        _update_translation_stats_callback({'elapsed_time': elapsed_time}) # Update elapsed time
+        _update_translation_stats_callback({'elapsed_time': elapsed_time})
 
         final_status_payload = {
             'result': active_translations[translation_id]['result'],
@@ -344,21 +339,19 @@ async def perform_actual_translation(translation_id, config):
             'file_type': config['file_type']
         }
         
-        # Check interruption flag explicitly here for final status
         if active_translations[translation_id].get('interrupted', False):
             active_translations[translation_id]['status'] = 'interrupted'
             _log_message_callback("summary_interrupted", f"🛑 Translation interrupted by user. Partial result saved. Time: {elapsed_time:.2f}s.")
             final_status_payload['status'] = 'interrupted'
-            # Progress might not be 100%, keep it as is from last callback
             final_status_payload['progress'] = active_translations[translation_id].get('progress', 0)
 
-        elif active_translations[translation_id].get('status') != 'error': # If not interrupted and not already an error
+        elif active_translations[translation_id].get('status') != 'error':
              active_translations[translation_id]['status'] = 'completed'
              _log_message_callback("summary_completed", f"✅ Translation completed. Time: {elapsed_time:.2f}s.")
              final_status_payload['status'] = 'completed'
-             _update_translation_progress_callback(100) # Set progress to 100 for completed
+             _update_translation_progress_callback(100)
              final_status_payload['progress'] = 100
-        else: # Already in an error state
+        else:
             _log_message_callback("summary_error_final", f"❌ Translation finished with errors. Time: {elapsed_time:.2f}s.")
             final_status_payload['status'] = 'error'
             final_status_payload['error'] = active_translations[translation_id].get('error', 'Unknown error during finalization.')
@@ -395,7 +388,7 @@ def emit_update(translation_id, data_to_emit):
         try:
             if 'stats' not in data_to_emit and 'stats' in active_translations[translation_id]:
                 data_to_emit['stats'] = active_translations[translation_id]['stats']
-            # Ensure progress is always part of the update if available
+
             if 'progress' not in data_to_emit and 'progress' in active_translations[translation_id]:
                  data_to_emit['progress'] = active_translations[translation_id]['progress']
 
@@ -428,8 +421,8 @@ def get_translation_job_status(translation_id):
             'start_time': stats.get('start_time'),
             'elapsed_time': elapsed
         },
-        "logs": job_data.get('logs', [])[-100:], # Return last 100 logs
-        "result_preview": (job_data.get('result')[:1000] + '...' if len(job_data.get('result', '')) > 1000 else job_data.get('result')) if job_data.get('result') else None,
+        "logs": job_data.get('logs', [])[-100:],
+        "result_preview": "[Preview functionality removed. Download file to view content.]" if job_data.get('status') in ['completed', 'interrupted'] else None,
         "error": job_data.get('error'),
         "config": job_data.get('config'),
         "output_filepath": job_data.get('output_filepath')
@@ -441,8 +434,8 @@ def interrupt_translation_job(translation_id):
         return jsonify({"error": "Translation not found"}), 404
     job = active_translations[translation_id]
     if job.get('status') == 'running' or job.get('status') == 'queued':
-        job['interrupted'] = True # Set the flag
-        # The running task will pick this up via should_interrupt_current_task()
+        job['interrupted'] = True
+
         emit_update(translation_id, {'log': '🛑 Interruption signal received by the server. Processing will halt after current segment.'})
         return jsonify({"message": "Interruption signal sent. Translation will stop after the current segment."}), 200
     return jsonify({"message": "The translation is not in an interruptible state (e.g., already completed or failed)."}), 400

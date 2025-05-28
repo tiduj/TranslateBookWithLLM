@@ -1,4 +1,3 @@
-# translate.py
 import json
 import requests
 import os
@@ -31,7 +30,6 @@ NAMESPACES = {
     'epub': 'http://www.idpf.org/2007/ops'
 }
 
-# EPUB specific tags
 IGNORED_TAGS_EPUB = [
     '{http://www.w3.org/1999/xhtml}script',
     '{http://www.w3.org/1999/xhtml}style',
@@ -83,7 +81,7 @@ def get_adjusted_end_index(all_lines, intended_end_idx, max_look_forward_lines=2
 def split_text_into_chunks_with_context(text, main_lines_per_chunk_target):
     try:
         processed_text = re.sub(r'([a-zA-ZÀ-ÿ0-9])-(\n|\r\n|\r)\s*([a-zA-ZÀ-ÿ0-9])', r'\1\3', text)
-    except Exception: # Minimal error handling here as it falls back
+    except Exception:
         processed_text = text
 
     all_lines = processed_text.splitlines()
@@ -172,7 +170,9 @@ async def generate_translation_request(main_content, context_before, context_aft
     full_raw_response = ""
     source_lang = source_language.upper()
 
-    role_and_instructions_block = f"""## ROLE
+# PROMPT - can be edited for custom usages
+    role_and_instructions_block = f"""
+## ROLE
 # You are a {target_language} writer.
 
 ## TRANSLATION
@@ -209,9 +209,10 @@ async def generate_translation_request(main_content, context_before, context_aft
     structured_prompt = "\n\n".join(part.strip() for part in structured_prompt_parts if part and part.strip()).strip()
     
     if log_callback: log_callback("llm_prompt_debug", f"📝 LLM Prompt preview: {structured_prompt[:500]}...") # Keep log short
-    # print("\n----SEND TO LLM----")
-    # print(structured_prompt)
-    # print("-------------------\n")
+    
+    print("\n----LLM REQUEST----")
+    print(structured_prompt)
+    print("-------------------\n")
     
     payload = {
         "model": model, "prompt": structured_prompt, "stream": False,
@@ -224,9 +225,9 @@ async def generate_translation_request(main_content, context_before, context_aft
         json_response = response.json()
         full_raw_response = json_response.get("response", "")
 
-        # print("\n----LLM RAW RESPONSE----")
-        # print(full_raw_response)
-        # print("------------------------\n")
+        print("\n----LLM RESPONSE----")
+        print(full_raw_response)
+        print("------------------------\n")
         
         if not full_raw_response and "error" in json_response:
             err_msg = f"LLM API ERROR: {json_response['error']}"
@@ -271,19 +272,19 @@ async def generate_translation_request(main_content, context_before, context_aft
         else:
             tqdm.write(f"\n{warn_msg} Excerpt: {full_raw_response[:100]}...")
         
-        if main_content in full_raw_response: # Heuristic: if input is in output, it's probably a failed generation
+        if main_content in full_raw_response:
             discard_msg = "WARNING: LLM response seems to contain input. Discarded."
             if log_callback: log_callback("llm_prompt_in_response_warning", discard_msg)
             else: tqdm.write(discard_msg)
             return None
-        return full_raw_response.strip() # Return raw if tags are missing but input is not obviously in output
-
+        return full_raw_response.strip()
+    
 async def translate_text_file_with_callbacks(input_filepath, output_filepath,
                                        source_language="English", target_language="French",
                                        model_name=DEFAULT_MODEL, chunk_target_lines_cli=MAIN_LINES_PER_CHUNK,
                                        cli_api_endpoint=API_ENDPOINT,
                                        progress_callback=None, log_callback=None, stats_callback=None,
-                                       check_interruption_callback=None): # MODIFIED: Added check_interruption_callback
+                                       check_interruption_callback=None):
     if not os.path.exists(input_filepath):
         err_msg = f"ERROR: Input file '{input_filepath}' not found."
         if log_callback: log_callback("file_not_found_error", err_msg)
@@ -343,7 +344,6 @@ async def translate_text_file_with_callbacks(input_filepath, output_filepath,
     iterator = tqdm(structured_chunks, desc=f"Translating {source_language} to {target_language}", unit="seg") if not log_callback else structured_chunks
 
     for i, chunk_data in enumerate(iterator):
-        # MODIFIED: Check for interruption before processing each chunk
         if check_interruption_callback and check_interruption_callback():
             if log_callback: log_callback("txt_translation_interrupted", f"Translation process for segment {i+1}/{total_chunks} interrupted by user signal.")
             else: tqdm.write(f"\nTranslation interrupted by user at segment {i+1}/{total_chunks}.")
@@ -399,13 +399,13 @@ async def translate_text_file_with_callbacks(input_filepath, output_filepath,
         if stats_callback and total_chunks > 0:
             stats_callback({'completed_chunks': completed_chunks_count, 'failed_chunks': failed_chunks_count})
     
-    if progress_callback: progress_callback(100) # Ensure progress reaches 100% even if interrupted early but loop finishes
+    if progress_callback: progress_callback(100)
 
     final_translated_text = "\n".join(full_translation_parts)
     try:
         with open(output_filepath, 'w', encoding='utf-8') as f:
             f.write(final_translated_text)
-        success_msg = f"Full/Partial translation saved: '{output_filepath}'" # MODIFIED: Message acknowledges partial save
+        success_msg = f"Full/Partial translation saved: '{output_filepath}'"
         if log_callback: log_callback("txt_save_success", success_msg)
         else: tqdm.write(success_msg) 
     except Exception as e:
@@ -474,7 +474,7 @@ async def translate_epub_file(input_filepath, output_filepath,
                                model_name=DEFAULT_MODEL, chunk_target_lines_arg=MAIN_LINES_PER_CHUNK,
                                cli_api_endpoint=API_ENDPOINT,
                                progress_callback=None, log_callback=None, stats_callback=None,
-                               check_interruption_callback=None): # MODIFIED: Added check_interruption_callback
+                               check_interruption_callback=None):
     if not os.path.exists(input_filepath):
         err_msg = f"ERROR: Input EPUB file '{input_filepath}' not found."
         if log_callback: log_callback("epub_input_file_not_found", err_msg)
@@ -568,7 +568,6 @@ async def translate_epub_file(input_filepath, output_filepath,
 
             iterator_phase2 = tqdm(all_translation_jobs, desc="Translating EPUB segments", unit="seg") if not log_callback else all_translation_jobs
             for job_idx, job in enumerate(iterator_phase2):
-                # MODIFIED: Check for interruption before processing each job
                 if check_interruption_callback and check_interruption_callback():
                     if log_callback: log_callback("epub_translation_interrupted", f"EPUB translation process (job {job_idx+1}/{len(all_translation_jobs)}) interrupted by user signal.")
                     else: tqdm.write(f"\nEPUB translation interrupted by user at job {job_idx+1}/{len(all_translation_jobs)}.")
@@ -631,13 +630,13 @@ async def translate_epub_file(input_filepath, output_filepath,
                 if stats_callback and all_translation_jobs:
                     stats_callback({'completed_chunks': completed_jobs_count, 'failed_chunks': failed_jobs_count})
 
-            if progress_callback: progress_callback(100) # Ensure 100% if loop finishes or is interrupted
+            if progress_callback: progress_callback(100)
 
             if log_callback: log_callback("epub_phase3_start", "\nPhase 3: Applying translations to EPUB files...")
             
             iterator_phase3 = tqdm(all_translation_jobs, desc="Updating EPUB content", unit="seg") if not log_callback else all_translation_jobs
             for job in iterator_phase3:
-                if job.get('translated_text') is None: continue # MODIFIED: Use .get() for safety if job was skipped by interruption
+                if job.get('translated_text') is None: continue
 
                 element = job['element_ref']
                 translated_content = job['translated_text']
@@ -681,7 +680,7 @@ async def translate_epub_file(input_filepath, output_filepath,
                             arcname = os.path.relpath(file_path_abs_for_zip, temp_dir)
                             epub_zip.write(file_path_abs_for_zip, arcname)
             
-            success_save_msg = f"Translated (Full/Partial) EPUB saved: '{output_filepath}'" # MODIFIED
+            success_save_msg = f"Translated (Full/Partial) EPUB saved: '{output_filepath}'"
             if log_callback: log_callback("epub_save_success", success_save_msg)
             else: tqdm.write(success_save_msg) 
 
@@ -702,7 +701,7 @@ async def translate_file(input_filepath, output_filepath,
                          model_name=DEFAULT_MODEL, chunk_target_size_cli=MAIN_LINES_PER_CHUNK,
                          cli_api_endpoint=API_ENDPOINT,
                          progress_callback=None, log_callback=None, stats_callback=None,
-                         check_interruption_callback=None): # MODIFIED: Added check_interruption_callback
+                         check_interruption_callback=None):
     _, ext = os.path.splitext(input_filepath.lower())
     
     if ext == '.epub':
@@ -711,7 +710,7 @@ async def translate_file(input_filepath, output_filepath,
                                   model_name, chunk_target_size_cli, 
                                   cli_api_endpoint,
                                   progress_callback, log_callback, stats_callback,
-                                  check_interruption_callback=check_interruption_callback) # MODIFIED: Pass callback
+                                  check_interruption_callback=check_interruption_callback)
     else: 
         await translate_text_file_with_callbacks(
             input_filepath, output_filepath,
@@ -719,7 +718,7 @@ async def translate_file(input_filepath, output_filepath,
             model_name, chunk_target_size_cli,
             cli_api_endpoint,
             progress_callback, log_callback, stats_callback,
-            check_interruption_callback=check_interruption_callback # MODIFIED: Pass callback
+            check_interruption_callback=check_interruption_callback
         )
 
 if __name__ == "__main__":
@@ -747,7 +746,6 @@ if __name__ == "__main__":
     print(f"Target size per main segment: {args.chunksize} lines.")
     print(f"API endpoint: {args.api_endpoint}")
 
-    # For CLI, check_interruption_callback is None, so no interruption handling by default.
     asyncio.run(translate_file(
         args.input,
         args.output,

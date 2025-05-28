@@ -47,19 +47,6 @@ function finishCurrentFileTranslationUI(statusMessage, messageType, resultData) 
     currentFile.result = resultData.result;
 
     if (resultData && resultData.result) {
-        translatedContentFromServer = resultData.result;
-        
-        // Handle different file types
-        if (resultData.file_type === 'epub') {
-            document.getElementById('outputPreview').textContent = '📚 EPUB file translated successfully. Click "Download" to get your translated ebook.';
-            document.getElementById('outputNote').style.display = 'none';
-        } else {
-            document.getElementById('outputPreview').textContent =
-                (translatedContentFromServer || "").substring(0, 1000) +
-                ((translatedContentFromServer || "").length > 1000 ? '...' : '');
-            document.getElementById('outputNote').style.display = 'block';
-        }
-        
         document.getElementById('outputSection').classList.remove('hidden');
         document.getElementById('outputTitle').textContent = `📄 Translation Result for ${currentFile.name}`;
 
@@ -91,9 +78,7 @@ function handleTranslationUpdate(data) {
     if (data.progress !== undefined) updateProgress(data.progress);
 
     if (data.stats) {
-        // For EPUB files, stats might be different
         if (currentFile.fileType === 'epub') {
-            // Hide chunk-related stats for EPUB
             document.getElementById('statsGrid').style.display = 'none';
         } else {
             document.getElementById('statsGrid').style.display = '';
@@ -114,18 +99,14 @@ function handleTranslationUpdate(data) {
     } else if (data.status === 'error') {
         finishCurrentFileTranslationUI(`❌ ${currentFile.name}: Error - ${data.error || 'Unknown error.'}`, 'error', data);
     } else if (data.status === 'running') {
-         // This is expected when a file starts processing
          document.getElementById('progressSection').classList.remove('hidden');
          document.getElementById('currentFileProgressTitle').textContent = `📊 Translating: ${currentFile.name}`;
          
-         // For EPUB files, show a specific message
          if (currentFile.fileType === 'epub') {
              showMessage(`Translating EPUB file: ${currentFile.name}... This may take some time.`, 'info');
-             // Hide chunk stats for EPUB
              document.getElementById('statsGrid').style.display = 'none';
          } else {
              showMessage(`Translation in progress for ${currentFile.name}...`, 'info');
-             // Show chunk stats for text files
              document.getElementById('statsGrid').style.display = '';
          }
          
@@ -140,7 +121,6 @@ window.addEventListener('load', async () => {
         const healthData = await response.json();
         addLog('Server health check OK.');
         
-        // Check supported formats
         if (healthData.supported_formats) {
             addLog(`Supported file formats: ${healthData.supported_formats.join(', ')}`);
         }
@@ -155,8 +135,6 @@ window.addEventListener('load', async () => {
             document.getElementById('contextWindow').value = defaultConfig.context_window || 4096;
             document.getElementById('maxAttempts').value = defaultConfig.max_attempts || 2;
             document.getElementById('retryDelay').value = defaultConfig.retry_delay || 2;
-            
-            // Update default output pattern
             document.getElementById('outputFilenamePattern').value = "translated_{originalName}.{ext}";
         }
     } catch (error) {
@@ -187,12 +165,10 @@ async function loadAvailableModels() {
             });
             addLog(`✅ ${data.count} LLM model(s) loaded. Default: ${data.default}`);
         } else {
-            // Fixed: Don't show default model names when Ollama is not connected
             const errorMessage = data.error || 'No LLM models available. Ensure Ollama is running and accessible.';
             showMessage(`⚠️ ${errorMessage}`, 'error');
             
-            // Clear the select and add a placeholder
-            modelSelect.innerHTML = '<option value="">Check connection</option>';
+            modelSelect.innerHTML = '<option value="">Check connection !</option>';
             addLog(`⚠️ No models available from Ollama at ${currentApiEp}`);
         }
     } catch (error) {
@@ -210,11 +186,7 @@ fileUploadArea.addEventListener('drop', (e) => {
     const files = e.dataTransfer.files;
     if (files.length > 0) {
         Array.from(files).forEach(file => {
-            if (file.type === 'text/plain' || file.name.toLowerCase().endsWith('.epub')) {
-                addFileToList(file);
-            } else {
-                showMessage(`File '${file.name}' is not a .txt or .epub file and was skipped.`, 'error');
-            }
+            addFileToList(file); 
         });
         updateFileDisplay();
     }
@@ -239,11 +211,7 @@ function handleFileSelect(e) {
     const files = e.target.files;
     if (files.length > 0) {
         Array.from(files).forEach(file => {
-            if (file.type === 'text/plain' || file.name.toLowerCase().endsWith('.epub')) {
-                addFileToList(file);
-            } else {
-                showMessage(`File '${file.name}' is not a .txt or .epub file and was skipped.`, 'error');
-            }
+            addFileToList(file); 
         });
         updateFileDisplay();
     }
@@ -259,63 +227,52 @@ async function addFileToList(file) {
     const fileExtension = file.name.split('.').pop().toLowerCase();
     const originalNameWithoutExt = file.name.replace(/\.[^/.]+$/, "");
     const outputPattern = document.getElementById('outputFilenamePattern').value || "translated_{originalName}.{ext}";
+    
+    let processingFileType = 'txt'; 
+    if (fileExtension === 'epub') {
+        processingFileType = 'epub';
+    }
+    
     const outputFilename = outputPattern
         .replace("{originalName}", originalNameWithoutExt)
-        .replace("{ext}", fileExtension);
+        .replace("{ext}", fileExtension); 
 
-    if (fileExtension === 'epub') {
-        // For EPUB files, upload them to the server first
-        showMessage(`Uploading EPUB file: ${file.name}...`, 'info');
+    showMessage(`Uploading file: ${file.name}...`, 'info');
         
-        const formData = new FormData();
-        formData.append('file', file);
+    const formData = new FormData();
+    formData.append('file', file);
         
-        try {
-            const response = await fetch(`${API_BASE_URL}/api/upload`, {
-                method: 'POST',
-                body: formData
-            });
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/upload`, {
+            method: 'POST',
+            body: formData
+        });
             
-            if (!response.ok) {
-                throw new Error(`Upload failed: ${response.statusText}`);
-            }
-            
-            const uploadResult = await response.json();
-            
-            filesToProcess.push({
-                name: file.name,
-                filePath: uploadResult.file_path,
-                fileType: 'epub',
-                status: 'Queued',
-                outputFilename: outputFilename,
-                size: file.size,
-                translationId: null,
-                result: null
-            });
-            
-            showMessage(`EPUB file '${file.name}' uploaded successfully.`, 'success');
-            updateFileDisplay();
-            
-        } catch (error) {
-            showMessage(`Failed to upload EPUB file '${file.name}': ${error.message}`, 'error');
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `Upload failed: ${response.statusText}`);
         }
-    } else {
-        // For text files, read the content as before
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            filesToProcess.push({
-                name: file.name,
-                content: e.target.result,
-                fileType: 'txt',
-                status: 'Queued',
-                outputFilename: outputFilename,
-                size: file.size,
-                translationId: null,
-                result: null
-            });
-            updateFileDisplay();
-        };
-        reader.readAsText(file);
+            
+        const uploadResult = await response.json();
+            
+        filesToProcess.push({
+            name: file.name,
+            filePath: uploadResult.file_path,      
+            fileType: uploadResult.file_type,      
+            originalExtension: fileExtension,      
+            status: 'Queued',
+            outputFilename: outputFilename,
+            size: file.size,
+            translationId: null,
+            result: null,
+            content: null 
+        });
+            
+        showMessage(`File '${file.name}' (${uploadResult.file_type}) uploaded. Path: ${uploadResult.file_path}`, 'success');
+        updateFileDisplay();
+            
+    } catch (error) {
+        showMessage(`Failed to upload file '${file.name}': ${error.message}`, 'error');
     }
 }
 
@@ -328,8 +285,7 @@ function updateFileDisplay() {
             const li = document.createElement('li');
             li.setAttribute('data-filename', file.name);
             
-            const fileIcon = file.fileType === 'epub' ? '📚' : '📄';
-            li.textContent = `${fileIcon} ${file.name} (${(file.size / 1024).toFixed(2)} KB) `;
+            const fileIcon = file.fileType === 'epub' ? '📚' : '📄';             li.textContent = `${fileIcon} ${file.name} (${(file.size / 1024).toFixed(2)} KB) `;
             
             const statusSpan = document.createElement('span');
             statusSpan.className = 'file-status';
@@ -362,14 +318,12 @@ function resetFiles() {
     document.getElementById('translateBtn').disabled = true;
     document.getElementById('interruptBtn').classList.add('hidden');
     document.getElementById('interruptBtn').disabled = false;
-    document.getElementById('interruptBtn').innerHTML = '⏹️ Interrupt Current & Stop Batch';
 
     document.getElementById('customSourceLang').style.display = 'none';
     document.getElementById('customTargetLang').style.display = 'none';
     document.getElementById('sourceLang').selectedIndex = 0;
     document.getElementById('targetLang').selectedIndex = 0;
     document.getElementById('statsGrid').style.display = '';
-    document.getElementById('outputNote').style.display = 'block';
     updateProgress(0);
     showMessage('', '');
     addLog("Form and file list reset.");
@@ -383,19 +337,9 @@ function addLog(message) {
     const logContainer = document.getElementById('logContainer');
     const timestamp = new Date().toLocaleTimeString();
     
-    // Check if it's a LLM prompt and format it specially
-    if (message.includes('📝 LLM Prompt preview:')) {
-        const promptText = message.replace('📝 LLM Prompt preview:', '').trim();
-        logContainer.innerHTML += `<div class="log-entry log-prompt">
-            <span class="log-timestamp">[${timestamp}]</span> 
-            <span class="log-label">📝 LLM Prompt:</span>
-            <pre class="prompt-content">${escapeHtml(promptText)}</pre>
-        </div>`;
-    } else {
-        logContainer.innerHTML += `<div class="log-entry">
-            <span class="log-timestamp">[${timestamp}]</span> ${message}
-        </div>`;
-    }
+    logContainer.innerHTML += `<div class="log-entry">
+        <span class="log-timestamp">[${timestamp}]</span> ${message}
+    </div>`;
     
     logContainer.scrollTop = logContainer.scrollHeight;
 }
@@ -418,7 +362,6 @@ function earlyValidationFail(message) {
     return false;
 }
 
-// Start batch translation
 async function startBatchTranslation() {
     if (isBatchActive || filesToProcess.length === 0) return;
 
@@ -455,7 +398,7 @@ async function startBatchTranslation() {
 }
 
 async function processNextFileInQueue() {
-    if (currentProcessingJob) return; // Already processing one
+    if (currentProcessingJob) return;
 
     if (translationQueue.length === 0) {
         isBatchActive = false;
@@ -477,7 +420,6 @@ async function processNextFileInQueue() {
     document.getElementById('outputSection').classList.add('hidden');
     document.getElementById('downloadBtn').disabled = true;
 
-    // Show/hide stats based on file type
     if (fileToTranslate.fileType === 'epub') {
         document.getElementById('statsGrid').style.display = 'none';
     } else {
@@ -494,7 +436,6 @@ async function processNextFileInQueue() {
     let targetLanguageVal = document.getElementById('targetLang').value;
     if (targetLanguageVal === 'Other') targetLanguageVal = document.getElementById('customTargetLang').value.trim();
 
-    // Get all advanced settings
     const config = {
         source_language: sourceLanguageVal,
         target_language: targetLanguageVal,
@@ -509,11 +450,30 @@ async function processNextFileInQueue() {
         file_type: fileToTranslate.fileType
     };
 
-    // Add file-specific data
     if (fileToTranslate.fileType === 'epub') {
+        if (!fileToTranslate.filePath) {
+             addLog(`❌ Critical Error: EPUB file ${fileToTranslate.name} has no server path. Upload might have failed silently or logic error.`);
+             showMessage(`Cannot process EPUB ${fileToTranslate.name}: server path missing.`, 'error');
+             updateFileStatusInList(fileToTranslate.name, 'Path Error');
+             currentProcessingJob = null; 
+             processNextFileInQueue(); 
+             return;
+        }
         config.file_path = fileToTranslate.filePath;
-    } else {
-        config.text = fileToTranslate.content;
+    } else { 
+        if (fileToTranslate.content) {
+            config.text = fileToTranslate.content; 
+        } else {
+            if (!fileToTranslate.filePath) {
+                 addLog(`❌ Critical Error: TXT file ${fileToTranslate.name} has no server path and no direct content. Upload might have failed or logic error.`);
+                 showMessage(`Cannot process TXT file ${fileToTranslate.name}: server path or content missing.`, 'error');
+                 updateFileStatusInList(fileToTranslate.name, 'Input Error');
+                 currentProcessingJob = null;
+                 processNextFileInQueue();
+                 return;
+            }
+            config.file_path = fileToTranslate.filePath;
+        }
     }
 
     try {
