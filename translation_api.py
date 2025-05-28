@@ -509,4 +509,4 @@ if __name__ == '__main__':
     print(f"   - API: http://localhost:5000/api/")
     print(f"   - Supported formats: .txt and .epub")
     print("\n💡 Press Ctrl+C to stop the server\n")
-    socketio.run(app, debug=False, host='0.0.0.0', port=5000)
+    socketio.run(app, debug=False, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)
