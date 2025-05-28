@@ -21,7 +21,7 @@ This comprehensive guide walks you through setting up the complete environment o
 1.  **Miniconda (Python Environment Manager)**
 
       - **Purpose:** Creates isolated Python environments to manage dependencies
-      - **Download:** Get the latest Windows 64-bit installer from the [Miniconda documentation page](https://docs.conda.io/en/latest/miniconda.html)
+      - **Download:** Get the latest Windows 64-bit installer from the [Miniconda install page](https://www.anaconda.com/docs/getting-started/miniconda/install#windows-installation)
       - **Installation:** Run installer, choose "Install for me only", use default settings
 
 2.  **Ollama (Local LLM Runner)**
