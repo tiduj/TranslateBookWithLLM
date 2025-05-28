@@ -47,18 +47,6 @@ function finishCurrentFileTranslationUI(statusMessage, messageType, resultData) 
     currentFile.result = resultData.result;
 
     if (resultData && resultData.result) {
-        translatedContentFromServer = resultData.result;
-        
-        if (resultData.file_type === 'epub') {
-            document.getElementById('outputPreview').textContent = '📚 EPUB file translated successfully. Click "Download" to get your translated ebook.';
-            document.getElementById('outputNote').style.display = 'none';
-        } else {
-            document.getElementById('outputPreview').textContent =
-                (translatedContentFromServer || "").substring(0, 1000) +
-                ((translatedContentFromServer || "").length > 1000 ? '...' : '');
-            document.getElementById('outputNote').style.display = 'block';
-        }
-        
         document.getElementById('outputSection').classList.remove('hidden');
         document.getElementById('outputTitle').textContent = `📄 Translation Result for ${currentFile.name}`;
 
@@ -348,14 +336,12 @@ function resetFiles() {
     document.getElementById('translateBtn').disabled = true;
     document.getElementById('interruptBtn').classList.add('hidden');
     document.getElementById('interruptBtn').disabled = false;
-    document.getElementById('interruptBtn').innerHTML = '⏹️ Interrupt Current & Stop Batch';
 
     document.getElementById('customSourceLang').style.display = 'none';
     document.getElementById('customTargetLang').style.display = 'none';
     document.getElementById('sourceLang').selectedIndex = 0;
     document.getElementById('targetLang').selectedIndex = 0;
     document.getElementById('statsGrid').style.display = '';
-    document.getElementById('outputNote').style.display = 'block';
     updateProgress(0);
     showMessage('', '');
     addLog("Form and file list reset.");
