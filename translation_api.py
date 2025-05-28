@@ -320,10 +320,10 @@ async def perform_actual_translation(translation_id, config):
                 stats_callback=_update_translation_stats_callback,
                 check_interruption_callback=should_interrupt_current_task
             )
-            if os.path.exists(output_filepath_on_server):
-                with open(output_filepath_on_server, 'r', encoding='utf-8') as f_res:
-                    active_translations[translation_id]['result'] = f_res.read()
-            else:
+
+            if os.path.exists(output_filepath_on_server) and active_translations[translation_id].get('status') not in ['error', 'interrupted_before_save']: # Assuming a status if save fails
+                active_translations[translation_id]['result'] = "[TXT file translated - content available for download]"
+            elif not os.path.exists(output_filepath_on_server):
                 active_translations[translation_id]['result'] = "[TXT file (partially) translated - content not loaded for preview or write failed]"
 
             if temp_txt_file_path and os.path.exists(temp_txt_file_path):
@@ -427,7 +427,7 @@ def get_translation_job_status(translation_id):
             'elapsed_time': elapsed
         },
         "logs": job_data.get('logs', [])[-100:],
-        "result_preview": (job_data.get('result')[:1000] + '...' if len(job_data.get('result', '')) > 1000 else job_data.get('result')) if job_data.get('result') else None,
+        "result_preview": "[Preview functionality removed. Download file to view content.]" if job_data.get('status') in ['completed', 'interrupted'] else None,
         "error": job_data.get('error'),
         "config": job_data.get('config'),
         "output_filepath": job_data.get('output_filepath')
