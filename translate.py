@@ -11,42 +11,14 @@ import shutil
 from lxml import etree
 import html
 
-# --- Configuration ---
-API_ENDPOINT = "http://localhost:11434/api/generate"
-DEFAULT_MODEL = "mistral-small:24b"
-MAIN_LINES_PER_CHUNK = 25
-REQUEST_TIMEOUT = 60
-OLLAMA_NUM_CTX = 2048
-SENTENCE_TERMINATORS = tuple(list(".!?") + ['."', '?"', '!"', '.”', ".'", "?'", "!'", ":", ".)"])
-MAX_TRANSLATION_ATTEMPTS = 2
-RETRY_DELAY_SECONDS = 2
-TRANSLATE_TAG_IN = "[TRANSLATED]"
-TRANSLATE_TAG_OUT = "[/TRANSLATED]"
+from config import (
+    API_ENDPOINT, DEFAULT_MODEL, MAIN_LINES_PER_CHUNK, REQUEST_TIMEOUT,
+    OLLAMA_NUM_CTX, SENTENCE_TERMINATORS, MAX_TRANSLATION_ATTEMPTS,
+    RETRY_DELAY_SECONDS, TRANSLATE_TAG_IN, TRANSLATE_TAG_OUT,
+    NAMESPACES, IGNORED_TAGS_EPUB, CONTENT_BLOCK_TAGS_EPUB
+)
 
-NAMESPACES = {
-    'opf': 'http://www.idpf.org/2007/opf',
-    'dc': 'http://purl.org/dc/elements/1.1/',
-    'xhtml': 'http://www.w3.org/1999/xhtml',
-    'epub': 'http://www.idpf.org/2007/ops'
-}
-
-IGNORED_TAGS_EPUB = [
-    '{http://www.w3.org/1999/xhtml}script',
-    '{http://www.w3.org/1999/xhtml}style',
-    '{http://www.w3.org/1999/xhtml}meta',
-    '{http://www.w3.org/1999/xhtml}link'
-]
-
-CONTENT_BLOCK_TAGS_EPUB = [
-    '{http://www.w3.org/1999/xhtml}p', '{http://www.w3.org/1999/xhtml}div',
-    '{http://www.w3.org/1999/xhtml}li', '{http://www.w3.org/1999/xhtml}h1',
-    '{http://www.w3.org/1999/xhtml}h2', '{http://www.w3.org/1999/xhtml}h3',
-    '{http://www.w3.org/1999/xhtml}h4', '{http://www.w3.org/1999/xhtml}h5',
-    '{http://www.w3.org/1999/xhtml}h6', '{http://www.w3.org/1999/xhtml}blockquote',
-    '{http://www.w3.org/1999/xhtml}td', '{http://www.w3.org/1999/xhtml}th',
-    '{http://www.w3.org/1999/xhtml}caption',
-    '{http://www.w3.org/1999/xhtml}dt', '{http://www.w3.org/1999/xhtml}dd'
-]
+from prompts import generate_translation_prompt
 
 
 def get_adjusted_start_index(all_lines, intended_start_idx, max_look_back_lines=20):
@@ -202,48 +174,20 @@ async def generate_translation_request(main_content, context_before, context_aft
                                        source_language="English", target_language="French", model=DEFAULT_MODEL,
                                        api_endpoint_param=API_ENDPOINT, log_callback=None):
     full_raw_response = ""
-    source_lang = source_language.upper()
-
-    # PROMPT - can be edited for custom usages
-    role_and_instructions_block = f"""
-## ROLE
-# You are a {target_language} writer.
-
-## TRANSLATION
-+ Translate in the author's style
-+ Preserve meaning and enhance fluidity
-+ Adapt expressions and culture to the {target_language} language
-+ Maintain the original layout of the text
-
-## FORMATING
-+ Translate ONLY the text enclosed within the tags "[TO TRANSLATE]" and "[/TO TRANSLATE]" from {source_lang} into {target_language}
-+ Surround your translation with {TRANSLATE_TAG_IN} and {TRANSLATE_TAG_OUT} tags. For example: {TRANSLATE_TAG_IN}Your text translated here.{TRANSLATE_TAG_OUT}
-+ Return ONLY the translation, formatted as requested
-"""
-
-    previous_translation_block_text = ""
-    if previous_translation_context and previous_translation_context.strip():
-        previous_translation_block_text = f"""
-
-## Previous paragraph :
-(...) {previous_translation_context}
-
-"""
-
-    text_to_translate_block = f"""
-[TO TRANSLATE]
-{main_content}
-[/TO TRANSLATE]"""
-
-    structured_prompt_parts = [
-        role_and_instructions_block,
-        previous_translation_block_text,
-        text_to_translate_block
-    ]
-    structured_prompt = "\n\n".join(part.strip() for part in structured_prompt_parts if part and part.strip()).strip()
-
+    
+    structured_prompt = generate_translation_prompt(
+        main_content, 
+        context_before, 
+        context_after, 
+        previous_translation_context,
+        source_language, 
+        target_language,
+        TRANSLATE_TAG_IN, 
+        TRANSLATE_TAG_OUT
+    )
+    
     print("\n----Text To Translate Block----")
-    print(text_to_translate_block)
+    print({main_content})
     print("-------------------\n")
 
     payload = {
