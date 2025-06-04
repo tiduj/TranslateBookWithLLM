@@ -10,20 +10,22 @@ from datetime import datetime
 import tempfile
 
 try:
-    from translate import (
-        translate_epub_file,
-        translate_text_file_with_callbacks,
+    from config import (
         API_ENDPOINT as DEFAULT_OLLAMA_API_ENDPOINT,
         DEFAULT_MODEL,
         MAIN_LINES_PER_CHUNK,
         REQUEST_TIMEOUT,
         OLLAMA_NUM_CTX
     )
-    print("✅ 'translate' module imported successfully")
+    from translate import (
+        translate_epub_file,
+        translate_text_file_with_callbacks
+    )
+    print("✅ 'translate' module and 'config' module imported successfully")
 except ImportError as e:
-    print("❌ Error importing 'translate' module:")
+    print("❌ Error importing modules:")
     print(f"   {e}")
-    print("   Ensure 'translate.py' is in the same folder or 'translate_text_file' is named 'translate_text_file_with_callbacks'")
+    print("   Ensure 'translate.py' and 'config.py' are in the same folder")
     exit(1)
 
 app = Flask(__name__)
