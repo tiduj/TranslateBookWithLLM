@@ -9,8 +9,9 @@ import threading
 from datetime import datetime
 
 from src.core.text_processor import split_text_into_chunks_with_context
-from src.core.translator import translate_chunks
+from src.core.translator import translate_chunks, translate_subtitles
 from src.core.epub_processor import translate_epub_file
+from src.core.srt_processor import SRTProcessor
 from .websocket import emit_update
 
 
@@ -210,6 +211,84 @@ async def perform_actual_translation(translation_id, config, active_translations
 
             if temp_txt_file_path and os.path.exists(temp_txt_file_path):
                 os.remove(temp_txt_file_path)
+                
+        elif config['file_type'] == 'srt':
+            if not input_path_for_translate_module:
+                _log_message_callback("srt_error_no_path", "❌ SRT translation requires a file path from upload.")
+                raise Exception("SRT translation requires a file_path.")
+            
+            # Initialize SRT processor
+            srt_processor = SRTProcessor()
+            
+            # Read SRT file
+            try:
+                with open(input_path_for_translate_module, 'r', encoding='utf-8') as f:
+                    srt_content = f.read()
+            except Exception as e:
+                err_msg = f"ERROR: Reading SRT file '{input_path_for_translate_module}': {e}"
+                _log_message_callback("srt_read_error", err_msg)
+                raise Exception(err_msg)
+            
+            # Validate SRT format
+            if not srt_processor.validate_srt(srt_content):
+                err_msg = "Invalid SRT file format"
+                _log_message_callback("srt_invalid_format", err_msg)
+                raise Exception(err_msg)
+            
+            # Parse SRT file
+            _log_message_callback("srt_parse_start", "📝 Parsing SRT file...")
+            subtitles = srt_processor.parse_srt(srt_content)
+            
+            if not subtitles:
+                _log_message_callback("srt_no_subtitles", "No subtitles found in file")
+                raise Exception("No subtitles found in SRT file")
+            
+            _log_message_callback("srt_parse_complete", f"✅ Parsed {len(subtitles)} subtitles")
+            
+            # Update stats
+            if _update_translation_stats_callback:
+                _update_translation_stats_callback({
+                    'total_subtitles': len(subtitles),
+                    'completed_subtitles': 0,
+                    'failed_subtitles': 0,
+                    'start_time': time.time()
+                })
+            
+            # Translate subtitles
+            _log_message_callback("srt_translation_start", f"🔄 Starting subtitle translation...")
+            
+            translations = await translate_subtitles(
+                subtitles,
+                config['source_language'],
+                config['target_language'],
+                config['model'],
+                config['llm_api_endpoint'],
+                progress_callback=_update_translation_progress_callback,
+                log_callback=_log_message_callback,
+                stats_callback=_update_translation_stats_callback,
+                check_interruption_callback=should_interrupt_current_task
+            )
+            
+            # Update subtitles with translations
+            translated_subtitles = srt_processor.update_translated_subtitles(subtitles, translations)
+            
+            # Reconstruct SRT file
+            _log_message_callback("srt_reconstruct", "📄 Reconstructing SRT file...")
+            translated_srt = srt_processor.reconstruct_srt(translated_subtitles)
+            
+            # Save translated SRT
+            try:
+                with open(output_filepath_on_server, 'w', encoding='utf-8') as f:
+                    f.write(translated_srt)
+                success_msg = f"✅ SRT translation saved: '{output_filepath_on_server}'"
+                _log_message_callback("srt_save_success", success_msg)
+            except Exception as e:
+                err_msg = f"ERROR: Saving SRT file '{output_filepath_on_server}': {e}"
+                _log_message_callback("srt_save_error", err_msg)
+                raise Exception(err_msg)
+            
+            active_translations[translation_id]['result'] = "[SRT file translated - download to view]"
+            
         else:
             _log_message_callback("unknown_file_type", f"❌ Unknown file type: {config['file_type']}")
             raise Exception(f"Unsupported file type: {config['file_type']}")
@@ -247,6 +326,9 @@ async def perform_actual_translation(translation_id, config, active_translations
         if config['file_type'] == 'txt' or (config['file_type'] == 'epub' and active_translations[translation_id]['stats'].get('total_chunks', 0) > 0):
             final_stats = active_translations[translation_id]['stats']
             _log_message_callback("summary_stats_final", f"📊 Stats: {final_stats.get('completed_chunks', 0)} processed, {final_stats.get('failed_chunks', 0)} failed out of {final_stats.get('total_chunks', 0)} total segments/chunks.")
+        elif config['file_type'] == 'srt' and active_translations[translation_id]['stats'].get('total_subtitles', 0) > 0:
+            final_stats = active_translations[translation_id]['stats']
+            _log_message_callback("summary_stats_final", f"📊 Stats: {final_stats.get('completed_subtitles', 0)} processed, {final_stats.get('failed_subtitles', 0)} failed out of {final_stats.get('total_subtitles', 0)} total subtitles.")
         
         emit_update(socketio, translation_id, final_status_payload, active_translations)
 

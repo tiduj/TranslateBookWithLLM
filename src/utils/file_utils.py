@@ -4,8 +4,9 @@ File utilities for translation operations
 import os
 import asyncio
 from src.core.text_processor import split_text_into_chunks_with_context
-from src.core.translator import translate_chunks
+from src.core.translator import translate_chunks, translate_subtitles
 from src.core.epub_processor import translate_epub_file
+from src.core.srt_processor import SRTProcessor
 from config import DEFAULT_MODEL, MAIN_LINES_PER_CHUNK, API_ENDPOINT
 
 
@@ -120,6 +121,130 @@ async def translate_text_file_with_callbacks(input_filepath, output_filepath,
             print(err_msg)
 
 
+async def translate_srt_file_with_callbacks(input_filepath, output_filepath,
+                                           source_language="English", target_language="French",
+                                           model_name=DEFAULT_MODEL, chunk_target_lines_cli=MAIN_LINES_PER_CHUNK,
+                                           cli_api_endpoint=API_ENDPOINT,
+                                           progress_callback=None, log_callback=None, stats_callback=None,
+                                           check_interruption_callback=None):
+    """
+    Translate an SRT subtitle file with callback support
+    
+    Args:
+        input_filepath (str): Path to input SRT file
+        output_filepath (str): Path to output SRT file
+        source_language (str): Source language
+        target_language (str): Target language
+        model_name (str): LLM model name
+        chunk_target_lines_cli (int): Not used for SRT (kept for consistency)
+        cli_api_endpoint (str): API endpoint
+        progress_callback (callable): Progress callback
+        log_callback (callable): Logging callback
+        stats_callback (callable): Statistics callback
+        check_interruption_callback (callable): Interruption check callback
+    """
+    if not os.path.exists(input_filepath):
+        err_msg = f"ERROR: SRT file '{input_filepath}' not found."
+        if log_callback:
+            log_callback("srt_file_not_found", err_msg)
+        else:
+            print(err_msg)
+        return
+    
+    # Initialize SRT processor
+    srt_processor = SRTProcessor()
+    
+    # Read SRT file
+    try:
+        with open(input_filepath, 'r', encoding='utf-8') as f:
+            srt_content = f.read()
+    except Exception as e:
+        err_msg = f"ERROR: Reading SRT file '{input_filepath}': {e}"
+        if log_callback:
+            log_callback("srt_read_error", err_msg)
+        else:
+            print(err_msg)
+        return
+    
+    # Validate SRT format
+    if not srt_processor.validate_srt(srt_content):
+        err_msg = "Invalid SRT file format"
+        if log_callback:
+            log_callback("srt_invalid_format", err_msg)
+        else:
+            print(err_msg)
+        return
+    
+    # Parse SRT file
+    if log_callback:
+        log_callback("srt_parse_start", "Parsing SRT file...")
+    
+    subtitles = srt_processor.parse_srt(srt_content)
+    
+    if not subtitles:
+        err_msg = "No subtitles found in file"
+        if log_callback:
+            log_callback("srt_no_subtitles", err_msg)
+        else:
+            print(err_msg)
+        return
+    
+    if log_callback:
+        log_callback("srt_parse_complete", f"Parsed {len(subtitles)} subtitles")
+    
+    # Update stats
+    if stats_callback:
+        stats_callback({
+            'total_subtitles': len(subtitles),
+            'completed_subtitles': 0,
+            'failed_subtitles': 0
+        })
+    
+    # Translate subtitles
+    if log_callback:
+        log_callback("srt_translation_start", f"Translating {len(subtitles)} subtitles from {source_language} to {target_language}...")
+    
+    translations = await translate_subtitles(
+        subtitles,
+        source_language,
+        target_language,
+        model_name,
+        cli_api_endpoint,
+        progress_callback=progress_callback,
+        log_callback=log_callback,
+        stats_callback=stats_callback,
+        check_interruption_callback=check_interruption_callback
+    )
+    
+    # Update subtitles with translations
+    translated_subtitles = srt_processor.update_translated_subtitles(subtitles, translations)
+    
+    # Reconstruct SRT file
+    if log_callback:
+        log_callback("srt_reconstruct", "Reconstructing SRT file...")
+    
+    translated_srt = srt_processor.reconstruct_srt(translated_subtitles)
+    
+    # Save translated SRT
+    try:
+        with open(output_filepath, 'w', encoding='utf-8') as f:
+            f.write(translated_srt)
+        success_msg = f"SRT translation saved: '{output_filepath}'"
+        if log_callback:
+            log_callback("srt_save_success", success_msg)
+        else:
+            print(success_msg)
+    except Exception as e:
+        err_msg = f"ERROR: Saving SRT file '{output_filepath}': {e}"
+        if log_callback:
+            log_callback("srt_save_error", err_msg)
+        else:
+            print(err_msg)
+    
+    if progress_callback:
+        progress_callback(100)
+
+
 async def translate_file(input_filepath, output_filepath,
                         source_language="English", target_language="French",
                         model_name=DEFAULT_MODEL, chunk_target_size_cli=MAIN_LINES_PER_CHUNK,
@@ -151,6 +276,15 @@ async def translate_file(input_filepath, output_filepath,
                                   cli_api_endpoint,
                                   progress_callback, log_callback, stats_callback,
                                   check_interruption_callback=check_interruption_callback)
+    elif ext == '.srt':
+        await translate_srt_file_with_callbacks(
+            input_filepath, output_filepath,
+            source_language, target_language,
+            model_name, chunk_target_size_cli,
+            cli_api_endpoint,
+            progress_callback, log_callback, stats_callback,
+            check_interruption_callback=check_interruption_callback
+        )
     else:
         await translate_text_file_with_callbacks(
             input_filepath, output_filepath,

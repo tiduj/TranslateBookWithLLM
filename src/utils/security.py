@@ -32,13 +32,15 @@ class SecureFileHandler:
     """Secure file upload and validation handler"""
     
     # Allowed file extensions
-    ALLOWED_EXTENSIONS: Set[str] = {'.txt', '.epub'}
+    ALLOWED_EXTENSIONS: Set[str] = {'.txt', '.epub', '.srt'}
     
     # Allowed MIME types
     ALLOWED_MIME_TYPES: Set[str] = {
         'text/plain',
         'application/epub+zip',
         'application/zip',  # Some EPUB files are detected as zip
+        'application/x-subrip',  # SRT files
+        'text/srt',  # Alternative MIME type for SRT
     }
     
     # Maximum file size (100MB)
@@ -224,6 +226,8 @@ class SecureFileHandler:
                 return self._validate_text_file(file_path)
             elif file_ext == '.epub':
                 return self._validate_epub_file(file_path)
+            elif file_ext == '.srt':
+                return self._validate_srt_file(file_path)
             else:
                 return FileValidationResult(
                     is_valid=False,
@@ -336,6 +340,76 @@ class SecureFileHandler:
             return FileValidationResult(
                 is_valid=False,
                 error_message=f"EPUB validation failed: {str(e)}"
+            )
+    
+    def _validate_srt_file(self, file_path: Path) -> FileValidationResult:
+        """Validate SRT subtitle file content"""
+        warnings = []
+        
+        try:
+            # Read file content
+            with open(file_path, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
+            
+            # Check if file is empty
+            if not content.strip():
+                return FileValidationResult(
+                    is_valid=False,
+                    error_message="Empty SRT file not allowed"
+                )
+            
+            # Check for basic SRT structure (number, timecode, text)
+            # Look for at least one subtitle pattern
+            import re
+            srt_pattern = re.compile(
+                r'\d+\s*\n'  # Subtitle number
+                r'\d{2}:\d{2}:\d{2},\d{3}\s*-->\s*\d{2}:\d{2}:\d{2},\d{3}',  # Timecode
+                re.MULTILINE
+            )
+            
+            if not srt_pattern.search(content):
+                return FileValidationResult(
+                    is_valid=False,
+                    error_message="Invalid SRT format: no valid subtitle patterns found"
+                )
+            
+            # Check for suspicious patterns (same as text files)
+            content_lower = content.lower()
+            found_patterns = []
+            
+            for pattern in self.SUSPICIOUS_PATTERNS:
+                if pattern in content_lower:
+                    found_patterns.append(pattern)
+            
+            if found_patterns:
+                return FileValidationResult(
+                    is_valid=False,
+                    error_message=f"Suspicious content detected in SRT: {', '.join(found_patterns[:3])}"
+                )
+            
+            # Check encoding validity
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    f.read()
+            except UnicodeDecodeError:
+                warnings.append("SRT file encoding may not be UTF-8")
+            
+            # Count subtitles
+            subtitle_count = len(re.findall(r'^\d+\s*$', content, re.MULTILINE))
+            if subtitle_count == 0:
+                warnings.append("No subtitle entries detected")
+            elif subtitle_count > 10000:
+                return FileValidationResult(
+                    is_valid=False,
+                    error_message="SRT file contains too many subtitles (>10000)"
+                )
+            
+            return FileValidationResult(is_valid=True, warnings=warnings)
+            
+        except Exception as e:
+            return FileValidationResult(
+                is_valid=False,
+                error_message=f"SRT file validation failed: {str(e)}"
             )
     
     def cleanup_old_files(self, max_age_hours: int = 24):

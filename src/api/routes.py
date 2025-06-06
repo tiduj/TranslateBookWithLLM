@@ -40,7 +40,7 @@ def configure_routes(app, active_translations, output_dir, start_translation_job
             "message": "Translation API is running",
             "translate_module": "loaded",
             "ollama_default_endpoint": DEFAULT_OLLAMA_API_ENDPOINT,
-            "supported_formats": ["txt", "epub"]
+            "supported_formats": ["txt", "epub", "srt"]
         })
 
     @app.route('/api/models', methods=['GET'])
@@ -85,7 +85,7 @@ def configure_routes(app, active_translations, output_dir, start_translation_job
             "context_window": OLLAMA_NUM_CTX,
             "max_attempts": 2,
             "retry_delay": 2,
-            "supported_formats": ["txt", "epub"]
+            "supported_formats": ["txt", "epub", "srt"]
         })
 
     @app.route('/api/translate', methods=['POST'])
@@ -190,7 +190,12 @@ def configure_routes(app, active_translations, output_dir, start_translation_job
             
             # Determine file type
             original_filename = file.filename.lower()
-            file_type = "epub" if original_filename.endswith('.epub') else "txt"
+            if original_filename.endswith('.epub'):
+                file_type = "epub"
+            elif original_filename.endswith('.srt'):
+                file_type = "srt"
+            else:
+                file_type = "txt"
             
             # Get file info
             file_size = len(file_data)
