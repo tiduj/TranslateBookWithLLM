@@ -6,7 +6,7 @@
 
 ## Features
 
-- 📚 **Multiple Format Support**: Translate both plain text (.txt) and EPUB files while preserving formatting
+- 📚 **Multiple Format Support**: Translate both plain text (.txt) EPUB and SRT (Subtitle) files while preserving formatting
 - 🌐 **Web Interface**: User-friendly browser-based interface with real-time progress tracking via WebSocket
 - 💻 **CLI Support**: Command-line interface for automation and scripting
 - 🎯 **Context Management**: Intelligent text chunking that preserves sentence boundaries and maintains context
