@@ -6,11 +6,11 @@
 
 ## Features
 
-  - 🌐 **Web Interface**: User-friendly browser-based interface with real-time progress tracking
-  - 📚 **EPUB Support**: Seamless translation of `.epub` book files, preserving their original structure.
-  - 💻 **CLI Support**: Command-line interface for automation and scripting
-
------
+- 📚 **Multiple Format Support**: Translate both plain text (.txt) and EPUB files while preserving formatting
+- 🌐 **Web Interface**: User-friendly browser-based interface with real-time progress tracking via WebSocket
+- 💻 **CLI Support**: Command-line interface for automation and scripting
+- 🎯 **Context Management**: Intelligent text chunking that preserves sentence boundaries and maintains context
+- 🔒 **Secure File Handling**: Built-in security features for file uploads and processing
 
 ## Windows Installation Guide
 
@@ -75,10 +75,13 @@ git clone https://github.com/hydropix/TranslateBookWithLLM.git .
 conda activate translate_book_env
 
 # Install web interface dependencies (recommended)
-pip install flask flask-cors flask-socketio python-socketio requests tqdm aiohttp lxml ebooklib
+pip install flask flask-cors flask-socketio python-socketio requests tqdm aiohttp lxml
 
 # Or install minimal dependencies for CLI only
-pip install requests tqdm lxml ebooklib
+pip install requests tqdm
+
+# For EPUB support, also install:
+pip install lxml
 ```
 
 -----
@@ -121,16 +124,13 @@ pip install requests tqdm lxml ebooklib
 
 2.  **Open Browser:** Navigate to `http://localhost:5000`
 
-3.  **Configure and Translate:**
-
-      - Select source and target languages
-      - Choose your LLM model
-      - Upload your `.txt` or `.epub` file
-      - Adjust advanced settings if needed
-      - Start translation and monitor progress
-      - Download the result
-
------
+3. **Configure and Translate:**
+   - Select source and target languages
+   - Choose your LLM model
+   - Upload your .txt or .epub file
+   - Adjust advanced settings if needed
+   - Start translation and monitor real-time progress
+   - Download the translated result
 
 ## Option B: Command Line Interface
 
@@ -153,20 +153,29 @@ python translate.py -i input.txt -o output.txt
 **Examples:**
 
 ```bash
-# Basic English to French translation of a text file
+# Basic English to French translation (text file)
 python translate.py -i book.txt -o book_fr.txt
 
-# Translate an EPUB file from English to French
-python translate.py -i my_novel.epub -o my_novel_fr.epub -sl English -tl French
+# Translate EPUB file
+python translate.py -i book.epub -o book_fr.epub
 
-# English to German with a different model
+# English to German with different model
 python translate.py -i story.txt -o story_de.txt -sl English -tl German -m qwen2:7b
 
 # Custom chunk size for better context with a text file
 python translate.py -i novel.txt -o novel_fr.txt -cs 40
 ```
 
------
+### EPUB File Support
+
+The application fully supports EPUB files:
+- **Preserves Structure**: Maintains the original EPUB structure and formatting
+- **XML Processing**: Namespace-aware XML parsing for proper content handling
+- **Selective Translation**: Only translates content blocks (paragraphs, headings, etc.)
+- **Metadata Update**: Automatically updates language metadata in the EPUB
+- **Error Recovery**: Falls back to original content if translation fails
+
+---
 
 ## Advanced Configuration
 
@@ -179,10 +188,11 @@ The web interface provides easy access to:
   - **Context Window**: Model context size (1024-32768)
   - **Max Attempts**: Retry attempts for failed chunks (1-5)
 
-### Script Configuration (translate.py)
+### Configuration Files
 
-Key settings you can modify in `translate.py`:
+All configuration is centralized in two files:
 
+#### config.py - Main Settings
 ```python
 # API and Model Configuration
 API_ENDPOINT = "http://localhost:11434/api/generate"
@@ -190,35 +200,45 @@ DEFAULT_MODEL = "mistral-small:24b"
 
 # Processing Parameters
 MAIN_LINES_PER_CHUNK = 25          # Default chunk size
-REQUEST_TIMEOUT = 180              # API timeout (increase if needed)
-OLLAMA_NUM_CTX = 4096             # Context window size
+REQUEST_TIMEOUT = 60               # API timeout (seconds)
+OLLAMA_NUM_CTX = 2048             # Context window size
 MAX_TRANSLATION_ATTEMPTS = 2       # Retry attempts
 RETRY_DELAY_SECONDS = 2           # Wait between retries
+
+# Translation Tags
+TRANSLATE_TAG_IN = "[TRANSLATED]"
+TRANSLATE_TAG_OUT = "[/TRANSLATED]"
+
+# EPUB Processing (namespaces and content tags)
+NAMESPACES = {...}                # XML namespace mappings
+CONTENT_BLOCK_TAGS_EPUB = [...]   # Tags to translate
 ```
 
-### Custom Translation Prompts
+#### prompts.py - Translation Prompts
 
-The translation quality depends heavily on the prompt. You can modify the prompt in the `generate_translation_request` function:
+The translation quality depends heavily on the prompt. The prompts are now managed in `prompts.py`:
 
 ```python
-role_and_instructions_block = f"""
-## ROLE
-# You are a {target_language} writer.
+# The prompt template uses the actual tags from config.py
+structured_prompt = f"""
+## [ROLE] 
+# You are a {target_language} professional translator.
 
-## TRANSLATION
-+ Translate in the author's style
-+ Preserve meaning and enhance fluidity
-+ Adapt expressions and culture to the {target_language} language
-+ Maintain the original layout of the text
+## [TRANSLATION INSTRUCTIONS] 
++ Translate in the author's style.
++ Precisely preserve the deeper meaning of the text.
++ Adapt expressions and culture to the {target_language} language.
++ Vary your vocabulary with synonyms, avoid repetition.
++ Maintain the original layout, remove typos and line-break hyphens.
 
-## FORMATING
-+ Translate ONLY the text enclosed within the tags "[START TO TRANSLATE]" and "[END TO TRANSLATE]" from {source_lang} into {target_language}
-+ Surround your translation with {TRANSLATE_TAG_IN} and {TRANSLATE_TAG_OUT} tags. For example: {TRANSLATE_TAG_IN}Your text translated here.{TRANSLATE_TAG_OUT}
-+ Return ONLY the translation, formatted as requested
+## [FORMATTING INSTRUCTIONS] 
++ Translate ONLY the main content between the specified tags.
++ Surround your translation with {TRANSLATE_TAG_IN} and {TRANSLATE_TAG_OUT} tags.
++ Return only the translation, nothing else.
 """
 ```
 
-**Important:** If you change the `<translate>` tags, you must update the regex pattern that extracts the translation.
+**Note:** The translation tags are defined in `config.py` and automatically used by the prompt generator.
 
 -----
 
@@ -241,11 +261,10 @@ role_and_instructions_block = f"""
       - The chunk size applies to lines within HTML content blocks, chunk are mostly shorter than in .txt files.
 
 ### Content Preparation
-
-  - Clean your input text (remove artifacts, fix major typos)
-  - Use plain text (`.txt`) format or standard EPUB (`.epub`) files.
-  - Consider splitting very large files (\>1MB) into sections.
-
+- Clean your input text (remove artifacts, fix major typos)
+- Use plain text (.txt) or EPUB (.epub) format
+- Consider splitting very large text files (>1MB) into sections
+- EPUB files are processed automatically without size limitations
 -----
 
 ## Troubleshooting
@@ -259,7 +278,7 @@ role_and_instructions_block = f"""
 netstat -an | find "5000"
 
 # Try different port
-python translation_api.py  # Check the code for port configuration
+# Default port is 5000, configured in translation_api.py
 ```
 
 **Ollama Connection Issues:**
@@ -270,9 +289,10 @@ python translation_api.py  # Check the code for port configuration
 
 **Translation Timeouts:**
 
-  - Increase `REQUEST_TIMEOUT` in `translate.py`.
-  - Use smaller chunk sizes.
-  - Try a faster model.
+- Increase `REQUEST_TIMEOUT` in `config.py` (default: 60 seconds)
+- Use smaller chunk sizes
+- Try a faster model
+- For web interface, adjust timeout in advanced settings
 
 **Poor Translation Quality:**
 
@@ -293,19 +313,72 @@ ollama pull your-model-name
 
 ### Getting Help
 
-1.  Check the browser console for web interface issues.
-2.  Monitor the terminal output for detailed error messages.
-3.  Test with small text samples first.
-4.  Verify all dependencies are installed correctly.
-
+1. Check the browser console for web interface issues
+2. Monitor the terminal output for detailed error messages  
+3. Test with small text samples first
+4. Verify all dependencies are installed correctly
+5. For EPUB issues, check XML parsing errors in the console
+6. Review `config.py` for adjustable timeout and retry settings
 -----
 
 ## Architecture
 
-The application consists of:
+The application follows a clean modular architecture:
 
-  - **`translate.py`**: Core translation engine with CLI interface
-  - **`translation_api.py`**: Flask web server with WebSocket support
-  - **`translation_interface.html`**: Modern web interface with real-time updates
+### Project Structure
+```
+src/
+├── core/                    # Core translation logic
+│   ├── text_processor.py    # Text chunking and context management
+│   ├── translator.py        # LLM communication and translation
+│   └── epub_processor.py    # EPUB-specific processing
+├── api/                     # Flask web server
+│   ├── routes.py           # REST API endpoints
+│   ├── websocket.py        # WebSocket handlers for real-time updates
+│   └── handlers.py         # Translation job management
+├── web/                     # Web interface
+│   ├── static/             # CSS, JavaScript, images
+│   └── templates/          # HTML templates
+└── utils/                   # Utilities
+    ├── file_utils.py       # File processing utilities
+    └── security.py         # Security features for file handling
+```
 
-The web interface communicates with the backend via REST API and WebSocket for real-time progress updates, while the CLI version can be used independently for automation and scripting.
+### Root Level Files
+- **`translate.py`**: CLI interface (lightweight wrapper around core modules)
+- **`translation_api.py`**: Web server entry point
+- **`config.py`**: Centralized configuration for all settings
+- **`prompts.py`**: Translation prompt generation and management
+
+### Translation Pipeline
+1. **Text Processing**: Intelligent chunking preserving sentence boundaries
+2. **Context Management**: Maintains translation context between chunks
+3. **LLM Communication**: Async requests with retry logic and timeout handling
+4. **EPUB Processing**: XML namespace-aware processing preserving structure
+5. **Error Recovery**: Graceful degradation with original text preservation
+
+The web interface communicates via REST API and WebSocket for real-time progress, while the CLI version provides direct access for automation.
+
+### Key Features Implementation
+
+#### Asynchronous Processing
+- Uses `aiohttp` for concurrent API requests
+- Implements retry logic with exponential backoff
+- Configurable timeout handling for long translations
+
+#### Job Management System
+- Unique translation IDs for tracking multiple jobs
+- In-memory job storage with status updates
+- WebSocket events for real-time progress streaming
+- Support for translation interruption
+
+#### Security Features
+- File type validation for uploads
+- Size limits for uploaded files
+- Secure temporary file handling
+- Sanitized file paths and names
+
+#### Context-Aware Translation
+- Preserves sentence boundaries across chunks
+- Maintains translation context for consistency
+- Handles line-break hyphens
