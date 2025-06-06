@@ -13,6 +13,7 @@ from config import (
     TRANSLATE_TAG_IN, TRANSLATE_TAG_OUT
 )
 from prompts import generate_translation_prompt
+from typing import List, Dict, Tuple
 
 
 async def generate_translation_request(main_content, context_before, context_after, previous_translation_context,
@@ -228,3 +229,124 @@ async def translate_chunks(chunks, source_language, target_language, model_name,
             stats_callback({'completed_chunks': completed_chunks_count, 'failed_chunks': failed_chunks_count})
 
     return full_translation_parts
+
+
+async def translate_subtitles(subtitles: List[Dict[str, str]], source_language: str, 
+                            target_language: str, model_name: str, api_endpoint: str,
+                            progress_callback=None, log_callback=None, 
+                            stats_callback=None, check_interruption_callback=None) -> Dict[int, str]:
+    """
+    Translate subtitle entries preserving structure
+    
+    Args:
+        subtitles (list): List of subtitle dictionaries from SRT parser
+        source_language (str): Source language
+        target_language (str): Target language
+        model_name (str): LLM model name
+        api_endpoint (str): API endpoint
+        progress_callback (callable): Progress update callback
+        log_callback (callable): Logging callback
+        stats_callback (callable): Statistics update callback
+        check_interruption_callback (callable): Interruption check callback
+        
+    Returns:
+        dict: Mapping of subtitle index to translated text
+    """
+    total_subtitles = len(subtitles)
+    translations = {}
+    completed_count = 0
+    failed_count = 0
+    
+    if log_callback:
+        log_callback("srt_translation_start", f"Starting translation of {total_subtitles} subtitles...")
+    
+    iterator = tqdm(enumerate(subtitles), total=total_subtitles, 
+                   desc=f"Translating subtitles ({source_language} to {target_language})", 
+                   unit="subtitle") if not log_callback else enumerate(subtitles)
+    
+    for idx, subtitle in iterator:
+        if check_interruption_callback and check_interruption_callback():
+            if log_callback:
+                log_callback("srt_translation_interrupted", 
+                           f"Translation interrupted at subtitle {idx+1}/{total_subtitles}")
+            else:
+                tqdm.write(f"\nTranslation interrupted at subtitle {idx+1}/{total_subtitles}")
+            break
+        
+        if progress_callback and total_subtitles > 0:
+            progress_callback((idx / total_subtitles) * 100)
+        
+        text_to_translate = subtitle['text'].strip()
+        
+        # Skip empty subtitles
+        if not text_to_translate:
+            translations[idx] = ""
+            completed_count += 1
+            continue
+        
+        # Get context from surrounding subtitles
+        context_before = ""
+        context_after = ""
+        
+        # Get previous subtitle text for context
+        if idx > 0 and idx-1 in translations:
+            context_before = translations[idx-1]
+        elif idx > 0:
+            context_before = subtitles[idx-1].get('text', '')
+        
+        # Get next subtitle text for context
+        if idx < len(subtitles) - 1:
+            context_after = subtitles[idx+1].get('text', '')
+        
+        # Translation attempts
+        translated_text = None
+        attempts = 0
+        
+        while attempts < MAX_TRANSLATION_ATTEMPTS and translated_text is None:
+            attempts += 1
+            if attempts > 1:
+                retry_msg = f"Retrying subtitle {idx+1} (attempt {attempts}/{MAX_TRANSLATION_ATTEMPTS})..."
+                if log_callback:
+                    log_callback("srt_subtitle_retry", retry_msg)
+                else:
+                    tqdm.write(f"\n{retry_msg}")
+                await asyncio.sleep(RETRY_DELAY_SECONDS)
+            
+            # Use existing translation function with subtitle-specific context
+            translated_text = await generate_translation_request(
+                text_to_translate,
+                context_before,
+                context_after,
+                "", # No previous translation context for subtitles
+                source_language,
+                target_language,
+                model_name,
+                api_endpoint_param=api_endpoint,
+                log_callback=log_callback
+            )
+        
+        if translated_text is not None:
+            translations[idx] = translated_text
+            completed_count += 1
+        else:
+            # Keep original text if translation fails
+            err_msg = f"Failed to translate subtitle {idx+1} after {MAX_TRANSLATION_ATTEMPTS} attempts"
+            if log_callback:
+                log_callback("srt_subtitle_error", err_msg)
+            else:
+                tqdm.write(f"\n{err_msg}")
+            translations[idx] = text_to_translate  # Keep original
+            failed_count += 1
+        
+        if stats_callback and total_subtitles > 0:
+            stats_callback({
+                'completed_subtitles': completed_count,
+                'failed_subtitles': failed_count,
+                'total_subtitles': total_subtitles
+            })
+    
+    if log_callback:
+        log_callback("srt_translation_complete", 
+                    f"Completed translation: {completed_count} successful, {failed_count} failed")
+    
+    return translations

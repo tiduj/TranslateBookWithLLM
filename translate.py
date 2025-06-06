@@ -10,8 +10,8 @@ from src.utils.file_utils import translate_file
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Translate a text or EPUB file using an LLM.")
-    parser.add_argument("-i", "--input", required=True, help="Path to the input file (text or EPUB).")
+    parser = argparse.ArgumentParser(description="Translate a text, EPUB or SRT file using an LLM.")
+    parser.add_argument("-i", "--input", required=True, help="Path to the input file (text, EPUB, or SRT).")
     parser.add_argument("-o", "--output", default=None, help="Path to the output file. If not specified, uses input filename with suffix.")
     parser.add_argument("-sl", "--source_lang", default="English", help="Source language (default: English).")
     parser.add_argument("-tl", "--target_lang", default="French", help="Target language (default: French).")
@@ -26,9 +26,16 @@ if __name__ == "__main__":
         output_ext = ext
         if args.input.lower().endswith('.epub'):
             output_ext = '.epub'
+        elif args.input.lower().endswith('.srt'):
+            output_ext = '.srt'
         args.output = f"{base}_translated_{args.target_lang.lower()}{output_ext}"
 
-    file_type_msg = "EPUB" if args.input.lower().endswith('.epub') else "text"
+    if args.input.lower().endswith('.epub'):
+        file_type_msg = "EPUB"
+    elif args.input.lower().endswith('.srt'):
+        file_type_msg = "SRT subtitle"
+    else:
+        file_type_msg = "text"
     print(f"Translating {file_type_msg} from '{args.input}' ({args.source_lang}) to '{args.output}' ({args.target_lang}) with model {args.model}.")
     print(f"Target size per main segment: {args.chunksize} lines.")
     print(f"API endpoint: {args.api_endpoint}")

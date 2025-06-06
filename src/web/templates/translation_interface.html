@@ -111,9 +111,10 @@
                 </div>
 
                 <div class="file-upload" id="fileUpload" onclick="document.getElementById('fileInput').click()">
-                    <h3>📁 Drag & Drop your .txt or .epub files here</h3>
+                    <h3>📁 Drag & Drop your .txt, .epub or .srt files here</h3>
                     <p>or click to select</p>
-                    <input type="file" id="fileInput" accept=".txt,.epub" style="display: none;" onchange="handleFileSelect(event)" multiple> </div>
+                    <input type="file" id="fileInput" accept=".txt,.epub,.srt" style="display: none;" onchange="handleFileSelect(event)" multiple>
+                </div>
 
                 <div id="fileInfo" class="hidden" style="margin-bottom: 20px;">
                     <h4>Selected Files:</h4>

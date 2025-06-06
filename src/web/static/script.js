@@ -80,6 +80,11 @@ function handleTranslationUpdate(data) {
     if (data.stats) {
         if (currentFile.fileType === 'epub') {
             document.getElementById('statsGrid').style.display = 'none';
+        } else if (currentFile.fileType === 'srt') {
+            document.getElementById('statsGrid').style.display = '';
+            document.getElementById('totalChunks').textContent = data.stats.total_subtitles || '0';
+            document.getElementById('completedChunks').textContent = data.stats.completed_subtitles || '0';
+            document.getElementById('failedChunks').textContent = data.stats.failed_subtitles || '0';
         } else {
             document.getElementById('statsGrid').style.display = '';
             document.getElementById('totalChunks').textContent = data.stats.total_chunks || '0';
@@ -105,6 +110,9 @@ function handleTranslationUpdate(data) {
          if (currentFile.fileType === 'epub') {
              showMessage(`Translating EPUB file: ${currentFile.name}... This may take some time.`, 'info');
              document.getElementById('statsGrid').style.display = 'none';
+         } else if (currentFile.fileType === 'srt') {
+             showMessage(`Translating SRT subtitle file: ${currentFile.name}...`, 'info');
+             document.getElementById('statsGrid').style.display = '';
          } else {
              showMessage(`Translation in progress for ${currentFile.name}...`, 'info');
              document.getElementById('statsGrid').style.display = '';
@@ -233,6 +241,8 @@ async function addFileToList(file) {
     let processingFileType = 'txt'; 
     if (fileExtension === 'epub') {
         processingFileType = 'epub';
+    } else if (fileExtension === 'srt') {
+        processingFileType = 'srt';
     }
     
     const outputFilename = outputPattern
@@ -287,7 +297,8 @@ function updateFileDisplay() {
             const li = document.createElement('li');
             li.setAttribute('data-filename', file.name);
             
-            const fileIcon = file.fileType === 'epub' ? '📚' : '📄';             li.textContent = `${fileIcon} ${file.name} (${(file.size / 1024).toFixed(2)} KB) `;
+            const fileIcon = file.fileType === 'epub' ? '📚' : (file.fileType === 'srt' ? '🎬' : '📄');
+            li.textContent = `${fileIcon} ${file.name} (${(file.size / 1024).toFixed(2)} KB) `;
             
             const statusSpan = document.createElement('span');
             statusSpan.className = 'file-status';
@@ -424,6 +435,8 @@ async function processNextFileInQueue() {
 
     if (fileToTranslate.fileType === 'epub') {
         document.getElementById('statsGrid').style.display = 'none';
+    } else if (fileToTranslate.fileType === 'srt') {
+        document.getElementById('statsGrid').style.display = '';
     } else {
         document.getElementById('statsGrid').style.display = '';
     }
@@ -452,10 +465,10 @@ async function processNextFileInQueue() {
         file_type: fileToTranslate.fileType
     };
 
-    if (fileToTranslate.fileType === 'epub') {
+    if (fileToTranslate.fileType === 'epub' || fileToTranslate.fileType === 'srt') {
         if (!fileToTranslate.filePath) {
-             addLog(`❌ Critical Error: EPUB file ${fileToTranslate.name} has no server path. Upload might have failed silently or logic error.`);
-             showMessage(`Cannot process EPUB ${fileToTranslate.name}: server path missing.`, 'error');
+             addLog(`❌ Critical Error: ${fileToTranslate.fileType.toUpperCase()} file ${fileToTranslate.name} has no server path. Upload might have failed silently or logic error.`);
+             showMessage(`Cannot process ${fileToTranslate.fileType.toUpperCase()} ${fileToTranslate.name}: server path missing.`, 'error');
              updateFileStatusInList(fileToTranslate.name, 'Path Error');
              currentProcessingJob = null; 
              processNextFileInQueue(); 
@@ -544,7 +557,7 @@ function downloadLastTranslation() {
          showMessage(`Cannot download file as its status is '${lastCompletedJobData.status}'.`, 'error'); return;
     }
     
-    const fileTypeIcon = lastCompletedJobData.fileType === 'epub' ? '📚' : '📄';
+    const fileTypeIcon = lastCompletedJobData.fileType === 'epub' ? '📚' : (lastCompletedJobData.fileType === 'srt' ? '🎬' : '📄');
     const downloadUrl = `${API_BASE_URL}/api/download/${lastCompletedJobData.translationId}`;
     addLog(`${fileTypeIcon} Initiating download for ${lastCompletedJobData.outputFilename} from: ${downloadUrl}`);
     window.location.href = downloadUrl;
