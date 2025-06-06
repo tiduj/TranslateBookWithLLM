@@ -7,3 +7,10 @@ __pycache__/translate.cpython-312.pyc
 .idea/misc.xml
 .idea/.idea.TranslateBookWithLLM.dir/.idea/workspace.xml
 .idea/.idea.TranslateBookWithLLM.dir/.idea/projectSettingsUpdater.xml
+src/api/__pycache__/websocket.cpython-313.pyc
+src/api/__pycache__/routes.cpython-313.pyc
+src/api/__pycache__/handlers.cpython-313.pyc
+src/api/__pycache__/__init__.cpython-313.pyc
+__pycache__/prompts.cpython-313.pyc
+__pycache__/config.cpython-313.pyc
+src/__pycache__/__init__.cpython-313.pyc
