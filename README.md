@@ -320,8 +320,3 @@ ollama pull your-model-name
 5. For EPUB issues, check XML parsing errors in the console
 6. Review `config.py` for adjustable timeout and retry settings
 -----
-
-#### Context-Aware Translation
-- Preserves sentence boundaries across chunks
-- Maintains translation context for consistency
-- Handles line-break hyphens
