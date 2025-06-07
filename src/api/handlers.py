@@ -8,10 +8,8 @@ import tempfile
 import threading
 from datetime import datetime
 
-from src.core.text_processor import split_text_into_chunks_with_context
-from src.core.translator import translate_chunks, translate_subtitles
 from src.core.epub_processor import translate_epub_file
-from src.core.srt_processor import SRTProcessor
+from src.utils.unified_logger import setup_web_logger, LogType
 from .websocket import emit_update
 
 
@@ -68,19 +66,47 @@ async def perform_actual_translation(translation_id, config, active_translations
             return True
         return False
 
-    def _log_message_callback(message_key_from_translate_module, message_content=""):
-        timestamp = datetime.now().strftime('%H:%M:%S')
-        full_log_entry = f"[{timestamp}] {message_content}"
-
-        print(full_log_entry)
-
+    # Setup unified logger for web interface
+    def web_callback(log_entry):
+        """Callback for WebSocket emission"""
+        if 'logs' not in active_translations[translation_id]: 
+            active_translations[translation_id]['logs'] = []
+        active_translations[translation_id]['logs'].append(log_entry)
+        emit_update(socketio, translation_id, {'log': log_entry['message']}, active_translations)
+    
+    def storage_callback(log_entry):
+        """Callback for storing logs"""
+        if 'logs' not in active_translations[translation_id]: 
+            active_translations[translation_id]['logs'] = []
+        active_translations[translation_id]['logs'].append(log_entry)
+    
+    logger = setup_web_logger(web_callback, storage_callback)
+    
+    def _log_message_callback(message_key_from_translate_module, message_content="", data=None):
+        """Legacy callback wrapper for backward compatibility"""
+        # Skip debug messages for web interface
         if message_key_from_translate_module in ["llm_prompt_debug", "llm_raw_response_preview"]:
-            pass
+            return
+        
+        # Handle structured data from new logging system
+        if data and isinstance(data, dict):
+            log_type = data.get('type')
+            if log_type == 'llm_request':
+                logger.info("LLM Request", LogType.LLM_REQUEST, data)
+            elif log_type == 'llm_response':
+                logger.info("LLM Response", LogType.LLM_RESPONSE, data)
+            elif log_type == 'progress':
+                logger.info("Progress Update", LogType.PROGRESS, data)
+            else:
+                logger.info(message_content, data=data)
         else:
-            if 'logs' not in active_translations[translation_id]: 
-                active_translations[translation_id]['logs'] = []
-            active_translations[translation_id]['logs'].append(full_log_entry)
-            emit_update(socketio, translation_id, {'log': message_content}, active_translations)
+            # Map specific message patterns to appropriate log types
+            if "error" in message_key_from_translate_module.lower():
+                logger.error(message_content)
+            elif "warning" in message_key_from_translate_module.lower():
+                logger.warning(message_content)
+            else:
+                logger.info(message_content)
 
     def _update_translation_progress_callback(progress_percent):
         if translation_id in active_translations:
@@ -99,10 +125,17 @@ async def perform_actual_translation(translation_id, config, active_translations
             emit_update(socketio, translation_id, {'stats': current_stats}, active_translations)
 
     try:
-        _log_message_callback("config_info", f"🚀 Starting translation ({translation_id}). Config: {config['source_language']} to {config['target_language']}, Model: {config['model']}")
-        _log_message_callback("llm_endpoint_info", f"🔗 LLM Endpoint: {config['llm_api_endpoint']}")
-        _log_message_callback("output_file_info", f"💾 Expected output file: {config['output_filename']}")
-        _log_message_callback("file_type_info", f"📄 File type: {config['file_type']}")
+        # Log translation start with unified logger
+        logger.info("Translation Started", LogType.TRANSLATION_START, {
+            'source_lang': config['source_language'],
+            'target_lang': config['target_language'],
+            'file_type': config['file_type'].upper(),
+            'model': config['model'],
+            'translation_id': translation_id,
+            'output_file': config['output_filename'],
+            'api_endpoint': config['llm_api_endpoint'],
+            'chunk_size': config.get('chunk_size', 'default')
+        })
 
         output_filepath_on_server = os.path.join(output_dir, config['output_filename'])
         
@@ -137,55 +170,16 @@ async def perform_actual_translation(translation_id, config, active_translations
                     temp_txt_file_path = tmp_f.name
                 input_path_for_translate_module = temp_txt_file_path
 
-            if not input_path_for_translate_module:
-                _log_message_callback("txt_error_no_input", "❌ TXT translation requires text content or a file path.")
-                raise Exception("TXT translation input missing.")
-
-            # Read and process text file
-            try:
-                with open(input_path_for_translate_module, 'r', encoding='utf-8') as f:
-                    original_text = f.read()
-            except Exception as e:
-                err_msg = f"ERROR: Reading input file '{input_path_for_translate_module}': {e}"
-                _log_message_callback("file_read_error", err_msg)
-                raise Exception(err_msg)
-
-            if _log_message_callback: 
-                _log_message_callback("txt_split_start", f"Splitting text from '{config['source_language']}'...")
-
-            structured_chunks = split_text_into_chunks_with_context(original_text, config['chunk_size'])
-            total_chunks = len(structured_chunks)
-
-            if _update_translation_stats_callback and total_chunks > 0:
-                _update_translation_stats_callback({'total_chunks': total_chunks, 'completed_chunks': 0, 'failed_chunks': 0})
-
-            if total_chunks == 0 and original_text.strip():
-                warn_msg = "WARNING: No segments generated for non-empty text. Processing as a single block."
-                _log_message_callback("txt_no_chunks_warning", warn_msg)
-                structured_chunks = [{"context_before": "", "main_content": original_text, "context_after": ""}]
-                total_chunks = 1
-                if _update_translation_stats_callback: 
-                    _update_translation_stats_callback({'total_chunks': 1, 'completed_chunks': 0, 'failed_chunks': 0})
-            elif total_chunks == 0:
-                info_msg = "Empty input file. No translation needed."
-                _log_message_callback("txt_empty_input", info_msg)
-                try:
-                    with open(output_filepath_on_server, 'w', encoding='utf-8') as f: 
-                        f.write("")
-                    _log_message_callback("txt_empty_output_created", f"Empty output file '{output_filepath_on_server}' created.")
-                except Exception as e:
-                    err_msg = f"ERROR: Saving empty file '{output_filepath_on_server}': {e}"
-                    _log_message_callback("txt_empty_save_error", err_msg)
-                if _update_translation_progress_callback: 
-                    _update_translation_progress_callback(100)
-                return
-
-            # Translate chunks
-            translated_parts = await translate_chunks(
-                structured_chunks,
+            # Use unified file processing logic
+            from src.utils.file_utils import translate_text_file_with_callbacks
+            
+            await translate_text_file_with_callbacks(
+                input_path_for_translate_module,
+                output_filepath_on_server,
                 config['source_language'],
                 config['target_language'],
                 config['model'],
+                config['chunk_size'],
                 config['llm_api_endpoint'],
                 progress_callback=_update_translation_progress_callback,
                 log_callback=_log_message_callback,
@@ -193,18 +187,6 @@ async def perform_actual_translation(translation_id, config, active_translations
                 check_interruption_callback=should_interrupt_current_task,
                 custom_instructions=config.get('custom_instructions', '')
             )
-
-            # Save result
-            final_translated_text = "\n".join(translated_parts)
-            try:
-                with open(output_filepath_on_server, 'w', encoding='utf-8') as f:
-                    f.write(final_translated_text)
-                success_msg = f"Full/Partial translation saved: '{output_filepath_on_server}'"
-                _log_message_callback("txt_save_success", success_msg)
-            except Exception as e:
-                err_msg = f"ERROR: Saving output file '{output_filepath_on_server}': {e}"
-                _log_message_callback("txt_save_error", err_msg)
-                raise Exception(err_msg)
 
             if os.path.exists(output_filepath_on_server) and active_translations[translation_id].get('status') not in ['error', 'interrupted_before_save']:
                 active_translations[translation_id]['result'] = "[TXT file translated - content available for download]"
@@ -215,55 +197,16 @@ async def perform_actual_translation(translation_id, config, active_translations
                 os.remove(temp_txt_file_path)
                 
         elif config['file_type'] == 'srt':
-            if not input_path_for_translate_module:
-                _log_message_callback("srt_error_no_path", "❌ SRT translation requires a file path from upload.")
-                raise Exception("SRT translation requires a file_path.")
+            # Use unified file processing logic
+            from src.utils.file_utils import translate_srt_file_with_callbacks
             
-            # Initialize SRT processor
-            srt_processor = SRTProcessor()
-            
-            # Read SRT file
-            try:
-                with open(input_path_for_translate_module, 'r', encoding='utf-8') as f:
-                    srt_content = f.read()
-            except Exception as e:
-                err_msg = f"ERROR: Reading SRT file '{input_path_for_translate_module}': {e}"
-                _log_message_callback("srt_read_error", err_msg)
-                raise Exception(err_msg)
-            
-            # Validate SRT format
-            if not srt_processor.validate_srt(srt_content):
-                err_msg = "Invalid SRT file format"
-                _log_message_callback("srt_invalid_format", err_msg)
-                raise Exception(err_msg)
-            
-            # Parse SRT file
-            _log_message_callback("srt_parse_start", "📝 Parsing SRT file...")
-            subtitles = srt_processor.parse_srt(srt_content)
-            
-            if not subtitles:
-                _log_message_callback("srt_no_subtitles", "No subtitles found in file")
-                raise Exception("No subtitles found in SRT file")
-            
-            _log_message_callback("srt_parse_complete", f"✅ Parsed {len(subtitles)} subtitles")
-            
-            # Update stats
-            if _update_translation_stats_callback:
-                _update_translation_stats_callback({
-                    'total_subtitles': len(subtitles),
-                    'completed_subtitles': 0,
-                    'failed_subtitles': 0,
-                    'start_time': time.time()
-                })
-            
-            # Translate subtitles
-            _log_message_callback("srt_translation_start", f"🔄 Starting subtitle translation...")
-            
-            translations = await translate_subtitles(
-                subtitles,
+            await translate_srt_file_with_callbacks(
+                input_path_for_translate_module,
+                output_filepath_on_server,
                 config['source_language'],
                 config['target_language'],
                 config['model'],
+                config['chunk_size'],
                 config['llm_api_endpoint'],
                 progress_callback=_update_translation_progress_callback,
                 log_callback=_log_message_callback,
@@ -271,24 +214,6 @@ async def perform_actual_translation(translation_id, config, active_translations
                 check_interruption_callback=should_interrupt_current_task,
                 custom_instructions=config.get('custom_instructions', '')
             )
-            
-            # Update subtitles with translations
-            translated_subtitles = srt_processor.update_translated_subtitles(subtitles, translations)
-            
-            # Reconstruct SRT file
-            _log_message_callback("srt_reconstruct", "📄 Reconstructing SRT file...")
-            translated_srt = srt_processor.reconstruct_srt(translated_subtitles)
-            
-            # Save translated SRT
-            try:
-                with open(output_filepath_on_server, 'w', encoding='utf-8') as f:
-                    f.write(translated_srt)
-                success_msg = f"✅ SRT translation saved: '{output_filepath_on_server}'"
-                _log_message_callback("srt_save_success", success_msg)
-            except Exception as e:
-                err_msg = f"ERROR: Saving SRT file '{output_filepath_on_server}': {e}"
-                _log_message_callback("srt_save_error", err_msg)
-                raise Exception(err_msg)
             
             active_translations[translation_id]['result'] = "[SRT file translated - download to view]"
             
