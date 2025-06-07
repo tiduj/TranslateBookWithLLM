@@ -41,6 +41,7 @@ class LLMClient:
             "model": model or self.model,
             "prompt": prompt,
             "stream": False,
+            "think": False,
             "options": {"num_ctx": OLLAMA_NUM_CTX}
         }
         
