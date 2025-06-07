@@ -13,7 +13,7 @@ from config import (
     MAX_TRANSLATION_ATTEMPTS, RETRY_DELAY_SECONDS, 
     TRANSLATE_TAG_IN, TRANSLATE_TAG_OUT
 )
-from prompts import generate_translation_prompt
+from prompts import generate_translation_prompt, generate_subtitle_block_prompt
 from typing import List, Dict, Tuple
 
 
@@ -361,5 +361,198 @@ async def translate_subtitles(subtitles: List[Dict[str, str]], source_language: 
     if log_callback:
         log_callback("srt_translation_complete", 
                     f"Completed translation: {completed_count} successful, {failed_count} failed")
+    
+    return translations
+
+
+async def translate_subtitles_in_blocks(subtitle_blocks: List[List[Dict[str, str]]], 
+                                      source_language: str, target_language: str, 
+                                      model_name: str, api_endpoint: str,
+                                      progress_callback=None, log_callback=None, 
+                                      stats_callback=None, check_interruption_callback=None,
+                                      custom_instructions="") -> Dict[int, str]:
+    """
+    Translate subtitle entries in blocks for better context preservation.
+    
+    Args:
+        subtitle_blocks: List of subtitle blocks (each block is a list of subtitle dicts)
+        source_language: Source language
+        target_language: Target language
+        model_name: LLM model name
+        api_endpoint: API endpoint
+        progress_callback: Progress update callback
+        log_callback: Logging callback
+        stats_callback: Statistics update callback
+        check_interruption_callback: Interruption check callback
+        custom_instructions: Additional translation instructions
+        
+    Returns:
+        dict: Mapping of subtitle index to translated text
+    """
+    from src.core.srt_processor import SRTProcessor
+    srt_processor = SRTProcessor()
+    
+    total_blocks = len(subtitle_blocks)
+    total_subtitles = sum(len(block) for block in subtitle_blocks)
+    translations = {}
+    completed_count = 0
+    failed_count = 0
+    previous_translation_block = ""
+    
+    if log_callback:
+        log_callback("srt_block_translation_start", 
+                    f"Starting block translation: {total_subtitles} subtitles in {total_blocks} blocks...")
+    
+    for block_idx, block in enumerate(subtitle_blocks):
+        if check_interruption_callback and check_interruption_callback():
+            if log_callback:
+                log_callback("srt_translation_interrupted", 
+                           f"Translation interrupted at block {block_idx+1}/{total_blocks}")
+            else:
+                tqdm.write(f"\nTranslation interrupted at block {block_idx+1}/{total_blocks}")
+            break
+        
+        if progress_callback and total_blocks > 0:
+            progress_callback((block_idx / total_blocks) * 100)
+        
+        # Prepare subtitle blocks with indices
+        subtitle_tuples = []
+        block_indices = []
+        
+        for subtitle in block:
+            idx = int(subtitle['number']) - 1  # Convert to 0-based index
+            text = subtitle['text'].strip()
+            if text:  # Only include non-empty subtitles
+                subtitle_tuples.append((idx, text))
+                block_indices.append(idx)
+        
+        if not subtitle_tuples:
+            continue
+        
+        # Generate prompt for this block
+        prompt = generate_subtitle_block_prompt(
+            subtitle_tuples,
+            previous_translation_block,
+            source_language,
+            target_language,
+            TRANSLATE_TAG_IN,
+            TRANSLATE_TAG_OUT,
+            custom_instructions
+        )
+        
+        # Translation attempts for the block
+        translated_block_text = None
+        attempts = 0
+        
+        while attempts < MAX_TRANSLATION_ATTEMPTS and translated_block_text is None:
+            attempts += 1
+            if attempts > 1:
+                retry_msg = f"Retrying block {block_idx+1} (attempt {attempts}/{MAX_TRANSLATION_ATTEMPTS})..."
+                if log_callback:
+                    log_callback("srt_block_retry", retry_msg)
+                else:
+                    tqdm.write(f"\n{retry_msg}")
+                await asyncio.sleep(RETRY_DELAY_SECONDS)
+            
+            # Make translation request using the raw prompt
+            # We need to send the raw prompt to the LLM
+            try:
+                # Display what we're sending to the LLM
+                print("\n-------SENT to LLM-------")
+                print(prompt)
+                print("-------SENT to LLM-------\n")
+                
+                payload = {
+                    "model": model_name,
+                    "prompt": prompt,
+                    "stream": False,
+                    "options": {
+                        "num_ctx": OLLAMA_NUM_CTX
+                    }
+                }
+                
+                response = requests.post(api_endpoint, json=payload, timeout=REQUEST_TIMEOUT, stream=False)
+                response.raise_for_status()
+                json_response = response.json()
+                full_raw_response = json_response.get("response", "")
+                
+                # Display LLM response
+                print("\n-------LLM RESPONSE-------")
+                print(full_raw_response)
+                print("-------LLM RESPONSE-------\n")
+                
+                if full_raw_response:
+                    # Extract translation from tags
+                    escaped_tag_in = re.escape(TRANSLATE_TAG_IN)
+                    escaped_tag_out = re.escape(TRANSLATE_TAG_OUT)
+                    regex_pattern = rf"{escaped_tag_in}(.*?){escaped_tag_out}"
+                    matches = re.findall(regex_pattern, full_raw_response, re.DOTALL)
+                    
+                    if matches:
+                        translated_block_text = matches[0].strip()
+                    else:
+                        translated_block_text = None
+                else:
+                    translated_block_text = None
+                        
+            except Exception as e:
+                if log_callback:
+                    log_callback("srt_block_translation_error", f"Error: {str(e)}")
+                translated_block_text = None
+        
+        if translated_block_text:
+            # Extract individual translations from block
+            block_translations = srt_processor.extract_block_translations(
+                translated_block_text, block_indices
+            )
+            
+            # Update translations dictionary
+            for idx, trans_text in block_translations.items():
+                translations[idx] = trans_text
+                completed_count += 1
+            
+            # Track failed translations in block
+            for idx in block_indices:
+                if idx not in block_translations:
+                    # Keep original text for missing translations
+                    for subtitle in block:
+                        if int(subtitle['number']) - 1 == idx:
+                            translations[idx] = subtitle['text']
+                            failed_count += 1
+                            break
+            
+            # Store translated block for context (last 5 subtitles)
+            last_subtitles = []
+            for idx in sorted(block_translations.keys())[-5:]:
+                last_subtitles.append(f"[{idx}]{block_translations[idx]}")
+            previous_translation_block = '\n'.join(last_subtitles)
+            
+        else:
+            # Block translation failed - keep original text
+            err_msg = f"Failed to translate block {block_idx+1} after {MAX_TRANSLATION_ATTEMPTS} attempts"
+            if log_callback:
+                log_callback("srt_block_error", err_msg)
+            else:
+                tqdm.write(f"\n{err_msg}")
+            
+            for subtitle in block:
+                idx = int(subtitle['number']) - 1
+                translations[idx] = subtitle['text']
+                failed_count += 1
+            
+            previous_translation_block = ""  # Reset context on failure
+        
+        if stats_callback and total_subtitles > 0:
+            stats_callback({
+                'completed_subtitles': completed_count,
+                'failed_subtitles': failed_count,
+                'total_subtitles': total_subtitles,
+                'completed_blocks': block_idx + 1,
+                'total_blocks': total_blocks
+            })
+    
+    if log_callback:
+        log_callback("srt_block_translation_complete", 
+                    f"Completed block translation: {completed_count} successful, {failed_count} failed")
     
     return translations

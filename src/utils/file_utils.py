@@ -4,10 +4,10 @@ File utilities for translation operations
 import os
 import asyncio
 from src.core.text_processor import split_text_into_chunks_with_context
-from src.core.translator import translate_chunks, translate_subtitles
+from src.core.translator import translate_chunks, translate_subtitles, translate_subtitles_in_blocks
 from src.core.epub_processor import translate_epub_file
 from src.core.srt_processor import SRTProcessor
-from config import DEFAULT_MODEL, MAIN_LINES_PER_CHUNK, API_ENDPOINT
+from config import DEFAULT_MODEL, MAIN_LINES_PER_CHUNK, API_ENDPOINT, SRT_LINES_PER_BLOCK, SRT_MAX_CHARS_PER_BLOCK
 
 
 async def translate_text_file_with_callbacks(input_filepath, output_filepath,
@@ -201,12 +201,24 @@ async def translate_srt_file_with_callbacks(input_filepath, output_filepath,
             'failed_subtitles': 0
         })
     
-    # Translate subtitles
+    # Group subtitles into blocks for translation
     if log_callback:
-        log_callback("srt_translation_start", f"Translating {len(subtitles)} subtitles from {source_language} to {target_language}...")
+        log_callback("srt_grouping", f"Grouping {len(subtitles)} subtitles into blocks...")
     
-    translations = await translate_subtitles(
-        subtitles,
+    # Use SRT-specific configuration for block sizes
+    lines_per_block = SRT_LINES_PER_BLOCK
+    subtitle_blocks = srt_processor.group_subtitles_for_translation(
+        subtitles, 
+        lines_per_block=lines_per_block,
+        max_chars_per_block=SRT_MAX_CHARS_PER_BLOCK
+    )
+    
+    if log_callback:
+        log_callback("srt_translation_start", 
+                    f"Translating {len(subtitles)} subtitles in {len(subtitle_blocks)} blocks from {source_language} to {target_language}...")
+    
+    translations = await translate_subtitles_in_blocks(
+        subtitle_blocks,
         source_language,
         target_language,
         model_name,

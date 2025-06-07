@@ -10,6 +10,10 @@ RETRY_DELAY_SECONDS = 2
 TRANSLATE_TAG_IN = "[TRANSLATED]"
 TRANSLATE_TAG_OUT = "[/TRANSLATED]"
 
+# SRT-specific configuration
+SRT_LINES_PER_BLOCK = 5  # Number of subtitle lines to translate together
+SRT_MAX_CHARS_PER_BLOCK = 500  # Maximum characters per translation block
+
 NAMESPACES = {
     'opf': 'http://www.idpf.org/2007/opf',
     'dc': 'http://purl.org/dc/elements/1.1/',

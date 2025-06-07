@@ -205,3 +205,106 @@ class SRTProcessor:
         starts_with_i = text2.strip().startswith('I ') or text2.strip() == 'I'
         
         return not ends_with_terminator and (not starts_with_capital or starts_with_i)
+    
+    def group_subtitles_for_translation(self, subtitles: List[Dict[str, str]], 
+                                      lines_per_block: int = 5,
+                                      max_chars_per_block: int = 500) -> List[List[Dict[str, str]]]:
+        """Group subtitles into blocks for batch translation with context.
+        
+        Args:
+            subtitles: List of parsed subtitle dictionaries
+            lines_per_block: Target number of subtitle lines per translation block
+            max_chars_per_block: Maximum characters per block (soft limit)
+            
+        Returns:
+            List of subtitle blocks, where each block is a list of subtitle dicts
+        """
+        if not subtitles:
+            return []
+        
+        blocks = []
+        current_block = []
+        current_char_count = 0
+        
+        for i, subtitle in enumerate(subtitles):
+            text = subtitle.get('text', '').strip()
+            
+            # Include empty subtitles but don't count them toward limits
+            if not text:
+                # If we have a current block, add empty subtitle to maintain sequence
+                if current_block:
+                    current_block.append(subtitle)
+                continue
+                
+            text_length = len(text)
+            
+            # Check if adding this subtitle would exceed limits
+            would_exceed_lines = len(current_block) >= lines_per_block
+            would_exceed_chars = current_char_count + text_length > max_chars_per_block
+            
+            # Start new block if limits exceeded and current block has content
+            if current_block and (would_exceed_lines or would_exceed_chars):
+                blocks.append(current_block)
+                current_block = []
+                current_char_count = 0
+            
+            # Add subtitle to current block
+            current_block.append(subtitle)
+            current_char_count += text_length
+            
+        # Add final block if not empty
+        if current_block:
+            blocks.append(current_block)
+            
+        logger.info(f"Grouped {len(subtitles)} subtitles into {len(blocks)} blocks")
+        return blocks
+    
+    def extract_block_translations(self, translated_text: str, block_indices: List[int]) -> Dict[int, str]:
+        """Extract individual subtitle translations from a block translation.
+        
+        Args:
+            translated_text: The translated block text with index markers
+            block_indices: List of subtitle indices in this block
+            
+        Returns:
+            Dictionary mapping subtitle index to translated text
+        """
+        translations = {}
+        
+        # Split by index markers
+        lines = translated_text.strip().split('\n')
+        current_index = None
+        current_text_lines = []
+        
+        for line in lines:
+            # Check if line starts with index marker
+            index_match = re.match(r'^\[(\d+)\](.*)$', line)
+            
+            if index_match:
+                # Save previous subtitle if exists
+                if current_index is not None and current_text_lines:
+                    translations[current_index] = '\n'.join(current_text_lines).strip()
+                
+                # Start new subtitle
+                current_index = int(index_match.group(1))
+                remaining_text = index_match.group(2).strip()
+                
+                if remaining_text:
+                    current_text_lines = [remaining_text]
+                else:
+                    current_text_lines = []
+            else:
+                # Continue current subtitle
+                if current_index is not None:
+                    current_text_lines.append(line)
+        
+        # Save final subtitle
+        if current_index is not None and current_text_lines:
+            translations[current_index] = '\n'.join(current_text_lines).strip()
+        
+        # Validate we got all expected translations
+        missing_indices = set(block_indices) - set(translations.keys())
+        if missing_indices:
+            logger.warning(f"Missing translations for indices: {missing_indices}")
+        
+        return translations

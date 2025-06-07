@@ -59,3 +59,78 @@ def generate_translation_prompt(main_content, context_before, context_after, pre
     ]
     
     return "\n\n".join(part.strip() for part in structured_prompt_parts if part and part.strip()).strip()
+
+
+def generate_subtitle_block_prompt(subtitle_blocks, previous_translation_block, 
+                                 source_language="English", target_language="French",
+                                 translate_tag_in="[TRANSLATED]", translate_tag_out="[/TRANSLATED]",
+                                 custom_instructions=""):
+    """
+    Generate translation prompt for multiple subtitle blocks with index markers.
+    
+    Args:
+        subtitle_blocks: List of tuples (index, text) for subtitles to translate
+        previous_translation_block: Previous translated block for context
+        source_language: Source language 
+        target_language: Target language
+        translate_tag_in/out: Tags for translation markers
+        custom_instructions: Additional translation instructions
+        
+    Returns:
+        str: The complete prompt formatted for subtitle block translation
+    """
+    source_lang = source_language.upper()
+    
+    # Enhanced instructions for subtitle translation
+    role_and_instructions_block = f"""
+## ROLE
+# You are a {target_language} subtitle translator and dialogue adaptation specialist.
+
+## TRANSLATION
++ Translate dialogues naturally for subtitles
++ Adapt expressions and cultural references for {target_language} viewers
++ Keep subtitle length appropriate for reading speed
+
+## FORMATING
++ Translate ONLY the text enclosed within the tags "[TO TRANSLATE]" and "[/TO TRANSLATE]" from {source_lang} into {target_language}
++ Each subtitle is marked with its index: [index]text
++ Preserve the index markers in your translation
++ Surround your ENTIRE translation block with {translate_tag_in} and {translate_tag_out} tags
++ Return ONLY the translation block, formatted as requested
++ Maintain line breaks between indexed subtitles
+"""
+
+    # Custom instructions
+    custom_instructions_block = ""
+    if custom_instructions and custom_instructions.strip():
+        custom_instructions_block = f"""
+### ADDITIONAL INSTRUCTIONS
+{custom_instructions.strip()}
+"""
+        
+    # Previous translation context
+    previous_translation_block_text = ""
+    if previous_translation_block and previous_translation_block.strip():
+        previous_translation_block_text = f"""
+## Previous subtitle block (for context and consistency):
+{previous_translation_block}
+"""
+        
+    # Format subtitle blocks with indices
+    formatted_subtitles = []
+    for idx, text in subtitle_blocks:
+        formatted_subtitles.append(f"[{idx}]{text}")
+    
+    text_to_translate_block = f"""
+[TO TRANSLATE]
+{chr(10).join(formatted_subtitles)}
+[/TO TRANSLATE]"""
+
+    structured_prompt_parts = [
+        role_and_instructions_block,
+        custom_instructions_block,
+        previous_translation_block_text,
+        text_to_translate_block
+    ]
+    
+    return "\n\n".join(part.strip() for part in structured_prompt_parts if part and part.strip()).strip()
