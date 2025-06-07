@@ -9,11 +9,12 @@ class SRTProcessor:
     """Handles SRT subtitle file processing, parsing, and reconstruction."""
     
     def __init__(self):
+        # Updated regex pattern to properly capture SRT blocks
         self.subtitle_pattern = re.compile(
             r'(\d+)\s*\n'  # Subtitle number
             r'(\d{2}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2},\d{3})\s*\n'  # Timecode
-            r'((?:.*\n)*?)(?=\n\d+\s*\n|\Z)',  # Text content
-            re.MULTILINE | re.DOTALL
+            r'((?:(?!\n\n|\n\d+\s*\n).*\n?)*)',  # Text content (until empty line or next subtitle)
+            re.MULTILINE
         )
     
     def parse_srt(self, content: str) -> List[Dict[str, str]]:
@@ -32,17 +33,37 @@ class SRTProcessor:
         """
         subtitles = []
         
-        # Normalize line endings
+        # Normalize line endings and ensure content ends with newline
         content = content.replace('\r\n', '\n').replace('\r', '\n')
+        if not content.endswith('\n'):
+            content += '\n'
         
-        # Find all subtitle blocks
-        matches = self.subtitle_pattern.findall(content)
+        # Split content into blocks by double newlines
+        blocks = content.split('\n\n')
         
-        for match in matches:
-            number, start_time, end_time, text = match
+        for block in blocks:
+            block = block.strip()
+            if not block:
+                continue
+                
+            lines = block.split('\n')
+            if len(lines) < 3:  # Need at least: number, timecode, text
+                continue
+                
+            # Extract subtitle number
+            if not lines[0].isdigit():
+                continue
+            number = lines[0]
             
-            # Clean up the text - remove trailing newlines
-            text = text.rstrip('\n')
+            # Extract timecode
+            timecode_match = re.match(r'(\d{2}:\d{2}:\d{2},\d{3})\s*-->\s*(\d{2}:\d{2}:\d{2},\d{3})', lines[1])
+            if not timecode_match:
+                continue
+            start_time, end_time = timecode_match.groups()
+            
+            # Extract text (everything after timecode line)
+            text_lines = lines[2:]
+            text = '\n'.join(text_lines)
             
             subtitle = {
                 'number': number,
