@@ -1,4 +1,4 @@
-from config import TRANSLATE_TAG_IN, TRANSLATE_TAG_OUT
+from config import TRANSLATE_TAG_IN, TRANSLATE_TAG_OUT, INPUT_TAG_IN, INPUT_TAG_OUT
 
 def generate_translation_prompt(main_content, context_before, context_after, previous_translation_context,
                                source_language="English", target_language="French", 
@@ -24,7 +24,7 @@ def generate_translation_prompt(main_content, context_before, context_after, pre
 + Maintain the original layout of the text
 
 ## FORMATING
-+ Translate ONLY the text enclosed within the tags "[TO TRANSLATE]" and "[/TO TRANSLATE]" from {source_lang} into {target_language}
++ Translate ONLY the text enclosed within the tags "{INPUT_TAG_IN}" and "{INPUT_TAG_OUT}" from {source_lang} into {target_language}
 + Surround your translation with {translate_tag_in} and {translate_tag_out} tags. For example: {translate_tag_in}Your text translated here.{translate_tag_out}
 + Return ONLY the translation, formatted as requested
 """
@@ -48,9 +48,9 @@ def generate_translation_prompt(main_content, context_before, context_after, pre
 """
 
     text_to_translate_block = f"""
-[TO TRANSLATE]
+{INPUT_TAG_IN}
 {main_content}
-[/TO TRANSLATE]"""
+{INPUT_TAG_OUT}"""
 
     structured_prompt_parts = [
         role_and_instructions_block,
@@ -93,7 +93,7 @@ def generate_subtitle_block_prompt(subtitle_blocks, previous_translation_block,
 + Keep subtitle length appropriate for reading speed
 
 ## FORMATING
-+ Translate ONLY the text enclosed within the tags "[TO TRANSLATE]" and "[/TO TRANSLATE]" from {source_lang} into {target_language}
++ Translate ONLY the text enclosed within the tags "{INPUT_TAG_IN}" and "{INPUT_TAG_OUT}" from {source_lang} into {target_language}
 + Each subtitle is marked with its index: [index]text
 + Preserve the index markers in your translation
 + Surround your ENTIRE translation block with {translate_tag_in} and {translate_tag_out} tags
@@ -123,9 +123,9 @@ def generate_subtitle_block_prompt(subtitle_blocks, previous_translation_block,
         formatted_subtitles.append(f"[{idx}]{text}")
     
     text_to_translate_block = f"""
-[TO TRANSLATE]
+{INPUT_TAG_IN}
 {chr(10).join(formatted_subtitles)}
-[/TO TRANSLATE]"""
+{INPUT_TAG_OUT}"""
 
     structured_prompt_parts = [
         role_and_instructions_block,

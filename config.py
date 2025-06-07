@@ -9,6 +9,8 @@ MAX_TRANSLATION_ATTEMPTS = 2
 RETRY_DELAY_SECONDS = 2
 TRANSLATE_TAG_IN = "<TRANSLATED>"
 TRANSLATE_TAG_OUT = "</TRANSLATED>"
+INPUT_TAG_IN = "<TO TRANSLATE>"
+INPUT_TAG_OUT = "</TO TRANSLATE>"
 
 # SRT-specific configuration
 SRT_LINES_PER_BLOCK = 5  # Number of subtitle lines to translate together
