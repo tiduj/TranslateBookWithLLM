@@ -1,25 +1,22 @@
 """
 Translation module for LLM communication
 """
-import json
-import requests
-import re
 import asyncio
 import time
 from tqdm.auto import tqdm
 
 from config import (
-    API_ENDPOINT, DEFAULT_MODEL, REQUEST_TIMEOUT, OLLAMA_NUM_CTX,
-    MAX_TRANSLATION_ATTEMPTS, RETRY_DELAY_SECONDS, 
-    TRANSLATE_TAG_IN, TRANSLATE_TAG_OUT
+    DEFAULT_MODEL, TRANSLATE_TAG_IN, TRANSLATE_TAG_OUT,
+    MAX_TRANSLATION_ATTEMPTS, RETRY_DELAY_SECONDS
 )
 from prompts import generate_translation_prompt, generate_subtitle_block_prompt
+from .llm_client import default_client
 from typing import List, Dict, Tuple
 
 
 async def generate_translation_request(main_content, context_before, context_after, previous_translation_context,
                                        source_language="English", target_language="French", model=DEFAULT_MODEL,
-                                       api_endpoint_param=API_ENDPOINT, log_callback=None, custom_instructions=""):
+                                       api_endpoint_param=None, log_callback=None, custom_instructions=""):
     """
     Generate translation request to LLM API
     
@@ -31,14 +28,13 @@ async def generate_translation_request(main_content, context_before, context_aft
         source_language (str): Source language
         target_language (str): Target language
         model (str): LLM model name
-        api_endpoint_param (str): API endpoint
+        api_endpoint_param (str): API endpoint to use
         log_callback (callable): Logging callback function
+        custom_instructions (str): Additional translation instructions
         
     Returns:
         str: Translated text or None if failed
     """
-    full_raw_response = ""
-    
     structured_prompt = generate_translation_prompt(
         main_content, 
         context_before, 
@@ -46,83 +42,42 @@ async def generate_translation_request(main_content, context_before, context_aft
         previous_translation_context,
         source_language, 
         target_language,
-        TRANSLATE_TAG_IN, 
-        TRANSLATE_TAG_OUT,
-        custom_instructions
+        custom_instructions=custom_instructions
     )
     
     print("\n-------SENT to LLM-------")
     print(structured_prompt)
     print("-------SENT to LLM-------\n")
 
-    payload = {
-        "model": model, 
-        "prompt": structured_prompt, 
-        "stream": False,
-        "options": {"num_ctx": OLLAMA_NUM_CTX}
-    }
-
     start_time = time.time()
-    try:
-        response = requests.post(api_endpoint_param, json=payload, timeout=REQUEST_TIMEOUT)
-        response.raise_for_status()
-        json_response = response.json()
-        full_raw_response = json_response.get("response", "")
-        execution_time = time.time() - start_time
-
-        print("\n-------LLM RESPONSE-------")
-        print(full_raw_response)
-        print("-------LLM RESPONSE-------\n")
-
-
-        if not full_raw_response and "error" in json_response:
-            err_msg = f"LLM API ERROR: {json_response['error']}"
-            if log_callback: 
-                log_callback("llm_api_error", err_msg)
-            else: 
-                tqdm.write(f"\n{err_msg}")
-            return None
-
-    except requests.exceptions.Timeout:
-        err_msg = f"ERROR: LLM API Timeout ({REQUEST_TIMEOUT}s)"
-        if log_callback: 
-            log_callback("llm_timeout_error", err_msg)
-        else: 
-            tqdm.write(f"\n{err_msg}")
-        return None
-    except requests.exceptions.HTTPError as e:
-        err_msg = f"LLM API HTTP ERROR: {e.response.status_code} {e.response.reason}. Response: {e.response.text[:200]}..."
-        if log_callback: 
-            log_callback("llm_http_error", err_msg)
-        else: 
-            tqdm.write(f"\n{err_msg}")
-        return None
-    except requests.exceptions.RequestException as e:
-        err_msg = f"LLM API Request ERROR: {e}"
-        if log_callback: 
-            log_callback("llm_request_error", err_msg)
-        else: 
-            tqdm.write(f"\n{err_msg}")
-        return None
-    except json.JSONDecodeError as e:
-        raw_response_text = response.text if 'response' in locals() and hasattr(response, 'text') else "N/A"
-        err_msg = f"LLM API JSON Decoding ERROR. Raw response: {raw_response_text[:200]}..."
-        if log_callback: 
-            log_callback("llm_json_decode_error", err_msg)
-        else: 
-            tqdm.write(f"\n{err_msg}")
-        return None
-
-    # Extract translation from response
-    escaped_tag_in = re.escape(TRANSLATE_TAG_IN)
-    escaped_tag_out = re.escape(TRANSLATE_TAG_OUT)
-    regex_pattern = rf"{escaped_tag_in}(.*?){escaped_tag_out}"
-    match = re.search(regex_pattern, full_raw_response, re.DOTALL)
-
-    if match:
-        return match.group(1).strip()
+    
+    # Use custom endpoint if provided, otherwise use default client
+    if api_endpoint_param and api_endpoint_param != default_client.api_endpoint:
+        from .llm_client import LLMClient
+        custom_client = LLMClient(api_endpoint=api_endpoint_param, model=model)
+        full_raw_response = custom_client.make_request(structured_prompt, model)
     else:
-        warn_msg = f"WARNING: Tags {TRANSLATE_TAG_IN}...{TRANSLATE_TAG_OUT} missing in LLM response."
+        full_raw_response = default_client.make_request(structured_prompt, model)
+    execution_time = time.time() - start_time
+
+    if not full_raw_response:
+        err_msg = "ERROR: LLM API request failed"
+        if log_callback: 
+            log_callback("llm_api_error", err_msg)
+        else: 
+            tqdm.write(f"\n{err_msg}")
+        return None
+
+    print("\n-------LLM RESPONSE-------")
+    print(full_raw_response)
+    print("-------LLM RESPONSE-------\n")
+
+    translated_text = default_client.extract_translation(full_raw_response)
+    
+    if translated_text:
+        return translated_text
+    else:
+        warn_msg = f"WARNING: Translation tags missing in LLM response."
         if log_callback:
             log_callback("llm_tag_warning", warn_msg)
             log_callback("llm_raw_response_preview", f"LLM raw response: {full_raw_response[:500]}...")
@@ -290,27 +245,22 @@ async def translate_subtitles(subtitles: List[Dict[str, str]], source_language: 
         
         text_to_translate = subtitle['text'].strip()
         
-        # Skip empty subtitles
         if not text_to_translate:
             translations[idx] = ""
             completed_count += 1
             continue
         
-        # Get context from surrounding subtitles
         context_before = ""
         context_after = ""
         
-        # Get previous subtitle text for context
         if idx > 0 and idx-1 in translations:
             context_before = translations[idx-1]
         elif idx > 0:
             context_before = subtitles[idx-1].get('text', '')
         
-        # Get next subtitle text for context
         if idx < len(subtitles) - 1:
             context_after = subtitles[idx+1].get('text', '')
         
-        # Translation attempts
         translated_text = None
         attempts = 0
         
@@ -324,12 +274,11 @@ async def translate_subtitles(subtitles: List[Dict[str, str]], source_language: 
                     tqdm.write(f"\n{retry_msg}")
                 await asyncio.sleep(RETRY_DELAY_SECONDS)
             
-            # Use existing translation function with subtitle-specific context
             translated_text = await generate_translation_request(
                 text_to_translate,
                 context_before,
                 context_after,
-                "", # No previous translation context for subtitles
+                "",
                 source_language,
                 target_language,
                 model_name,
@@ -454,44 +403,28 @@ async def translate_subtitles_in_blocks(subtitle_blocks: List[List[Dict[str, str
                     tqdm.write(f"\n{retry_msg}")
                 await asyncio.sleep(RETRY_DELAY_SECONDS)
             
-            # Make translation request using the raw prompt
-            # We need to send the raw prompt to the LLM
+            # Make translation request using LLM client
             try:
-                # Display what we're sending to the LLM
                 print("\n-------SENT to LLM-------")
                 print(prompt)
                 print("-------SENT to LLM-------\n")
                 
-                payload = {
-                    "model": model_name,
-                    "prompt": prompt,
-                    "stream": False,
-                    "options": {
-                        "num_ctx": OLLAMA_NUM_CTX
-                    }
-                }
+                # Use custom endpoint if provided, otherwise use default client
+                if api_endpoint and api_endpoint != default_client.api_endpoint:
+                    from .llm_client import LLMClient
+                    custom_client = LLMClient(api_endpoint=api_endpoint, model=model_name)
+                    full_raw_response = custom_client.make_request(prompt, model_name)
+                    client_to_use = custom_client
+                else:
+                    full_raw_response = default_client.make_request(prompt, model_name)
+                    client_to_use = default_client
                 
-                response = requests.post(api_endpoint, json=payload, timeout=REQUEST_TIMEOUT, stream=False)
-                response.raise_for_status()
-                json_response = response.json()
-                full_raw_response = json_response.get("response", "")
-                
-                # Display LLM response
                 print("\n-------LLM RESPONSE-------")
-                print(full_raw_response)
+                print(full_raw_response or "None")
                 print("-------LLM RESPONSE-------\n")
                 
                 if full_raw_response:
-                    # Extract translation from tags
-                    escaped_tag_in = re.escape(TRANSLATE_TAG_IN)
-                    escaped_tag_out = re.escape(TRANSLATE_TAG_OUT)
-                    regex_pattern = rf"{escaped_tag_in}(.*?){escaped_tag_out}"
-                    matches = re.findall(regex_pattern, full_raw_response, re.DOTALL)
-                    
-                    if matches:
-                        translated_block_text = matches[0].strip()
-                    else:
-                        translated_block_text = None
+                    translated_block_text = client_to_use.extract_translation(full_raw_response)
                 else:
                     translated_block_text = None
                         
