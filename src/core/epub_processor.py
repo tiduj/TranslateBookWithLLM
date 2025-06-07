@@ -12,7 +12,7 @@ from config import (
     DEFAULT_MODEL, MAIN_LINES_PER_CHUNK, API_ENDPOINT
 )
 from .text_processor import split_text_into_chunks_with_context
-from .translator import translate_chunks
+from .translator import generate_translation_request
 
 
 def _get_node_text_content_with_br_as_newline(node):
@@ -34,11 +34,7 @@ def _get_node_text_content_with_br_as_newline(node):
         br_xhtml_tag = etree.QName(NAMESPACES['xhtml'], 'br').text
 
         if child_qname_str == br_xhtml_tag:
-            if parts and parts[-1].endswith('\n'):
-                pass
-            elif parts and parts[-1] == '\n':
-                pass
-            else:
+            if not (parts and (parts[-1].endswith('\n') or parts[-1] == '\n')):
                 parts.append('\n')
         elif child_qname_str in CONTENT_BLOCK_TAGS_EPUB:
             if parts and parts[-1] and not parts[-1].endswith('\n'):
@@ -131,6 +127,76 @@ def _collect_epub_translation_jobs_recursive(element, file_path_abs, jobs_list, 
                     'file_path': file_path_abs,
                     'translated_text': None
                 })
+
+
+async def translate_epub_chunks_with_context(chunks, source_language, target_language, model_name, 
+                                           api_endpoint, previous_context, log_callback=None, 
+                                           check_interruption_callback=None, custom_instructions=""):
+    """
+    Translate EPUB chunks with previous translation context for consistency
+    
+    Args:
+        chunks (list): List of chunk dictionaries
+        source_language (str): Source language
+        target_language (str): Target language
+        model_name (str): LLM model name
+        api_endpoint (str): API endpoint
+        previous_context (str): Previous translation for context
+        log_callback (callable): Logging callback
+        check_interruption_callback (callable): Interruption check callback
+        custom_instructions (str): Additional translation instructions
+        
+    Returns:
+        list: List of translated chunks
+    """
+    import asyncio
+    from config import MAX_TRANSLATION_ATTEMPTS, RETRY_DELAY_SECONDS
+    
+    total_chunks = len(chunks)
+    translated_parts = []
+    
+    for i, chunk_data in enumerate(chunks):
+        if check_interruption_callback and check_interruption_callback():
+            if log_callback: 
+                log_callback("epub_translation_interrupted", f"EPUB translation process for chunk {i+1}/{total_chunks} interrupted by user signal.")
+            break
+
+        main_content_to_translate = chunk_data["main_content"]
+        context_before_text = chunk_data["context_before"]
+        context_after_text = chunk_data["context_after"]
+
+        if not main_content_to_translate.strip():
+            translated_parts.append(main_content_to_translate)
+            continue
+
+        translated_chunk_text = None
+        current_attempts = 0
+        
+        while current_attempts < MAX_TRANSLATION_ATTEMPTS and translated_chunk_text is None:
+            current_attempts += 1
+            if current_attempts > 1:
+                retry_msg = f"Retrying EPUB chunk {i+1}/{total_chunks} (attempt {current_attempts}/{MAX_TRANSLATION_ATTEMPTS})..."
+                if log_callback: 
+                    log_callback("epub_chunk_retry", retry_msg)
+                await asyncio.sleep(RETRY_DELAY_SECONDS)
+
+            translated_chunk_text = await generate_translation_request(
+                main_content_to_translate, context_before_text, context_after_text,
+                previous_context, source_language, target_language,
+                model_name, api_endpoint_param=api_endpoint, log_callback=log_callback,
+                custom_instructions=custom_instructions
+            )
+
+        if translated_chunk_text is not None:
+            translated_parts.append(translated_chunk_text)
+        else:
+            err_msg_chunk = f"ERROR translating EPUB chunk {i+1} after {MAX_TRANSLATION_ATTEMPTS} attempts. Original content preserved."
+            if log_callback: 
+                log_callback("epub_chunk_translation_error", err_msg_chunk)
+            error_placeholder = f"[TRANSLATION_ERROR EPUB CHUNK {i+1}]\n{main_content_to_translate}\n[/TRANSLATION_ERROR EPUB CHUNK {i+1}]"
+            translated_parts.append(error_placeholder)
+
+    return translated_parts
 
 
 async def translate_epub_file(input_filepath, output_filepath,
@@ -283,20 +349,30 @@ async def translate_epub_file(input_filepath, output_filepath,
                     base_progress_phase2 = ((job_idx + 1) / len(all_translation_jobs)) * 90
                     progress_callback(10 + base_progress_phase2)
 
-                # Translate sub-chunks for this job
-                translated_parts = await translate_chunks(
+                # Translate sub-chunks for this job with previous context
+                translated_parts = await translate_epub_chunks_with_context(
                     job['sub_chunks'], source_language, target_language, 
-                    model_name, cli_api_endpoint, None, log_callback, None, check_interruption_callback, custom_instructions
+                    model_name, cli_api_endpoint, last_successful_llm_context, 
+                    log_callback, check_interruption_callback, custom_instructions
                 )
                 
                 job['translated_text'] = "\n".join(translated_parts)
                 
-                if any("[TRANSLATION_ERROR" in part for part in translated_parts):
+                has_translation_error = any("[TRANSLATION_ERROR" in part for part in translated_parts)
+                if has_translation_error:
                     failed_jobs_count += 1
                 else:
                     completed_jobs_count += 1
+                    # Update context with last successful translation
+                    if translated_parts:
+                        last_translation = "\n".join(translated_parts)
+                        words = last_translation.split()
+                        if len(words) > 150:
+                            last_successful_llm_context = " ".join(words[-150:])
+                        else:
+                            last_successful_llm_context = last_translation
 
-                if stats_callback and all_translation_jobs:
+                if stats_callback:
                     stats_callback({'completed_chunks': completed_jobs_count, 'failed_chunks': failed_jobs_count})
 
             if progress_callback: 
