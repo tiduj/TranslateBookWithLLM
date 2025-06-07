@@ -18,7 +18,7 @@ from typing import List, Dict, Tuple
 
 async def generate_translation_request(main_content, context_before, context_after, previous_translation_context,
                                        source_language="English", target_language="French", model=DEFAULT_MODEL,
-                                       api_endpoint_param=API_ENDPOINT, log_callback=None):
+                                       api_endpoint_param=API_ENDPOINT, log_callback=None, custom_instructions=""):
     """
     Generate translation request to LLM API
     
@@ -46,7 +46,8 @@ async def generate_translation_request(main_content, context_before, context_aft
         source_language, 
         target_language,
         TRANSLATE_TAG_IN, 
-        TRANSLATE_TAG_OUT
+        TRANSLATE_TAG_OUT,
+        custom_instructions
     )
     
     print("\n----Text To Translate Block----")
@@ -136,7 +137,7 @@ async def generate_translation_request(main_content, context_before, context_aft
 
 async def translate_chunks(chunks, source_language, target_language, model_name, 
                           api_endpoint, progress_callback=None, log_callback=None, 
-                          stats_callback=None, check_interruption_callback=None):
+                          stats_callback=None, check_interruption_callback=None, custom_instructions=""):
     """
     Translate a list of text chunks
     
@@ -203,7 +204,8 @@ async def translate_chunks(chunks, source_language, target_language, model_name,
             translated_chunk_text = await generate_translation_request(
                 main_content_to_translate, context_before_text, context_after_text,
                 last_successful_llm_context, source_language, target_language,
-                model_name, api_endpoint_param=api_endpoint, log_callback=log_callback
+                model_name, api_endpoint_param=api_endpoint, log_callback=log_callback,
+                custom_instructions=custom_instructions
             )
 
         if translated_chunk_text is not None:
@@ -234,7 +236,7 @@ async def translate_chunks(chunks, source_language, target_language, model_name,
 async def translate_subtitles(subtitles: List[Dict[str, str]], source_language: str, 
                             target_language: str, model_name: str, api_endpoint: str,
                             progress_callback=None, log_callback=None, 
-                            stats_callback=None, check_interruption_callback=None) -> Dict[int, str]:
+                            stats_callback=None, check_interruption_callback=None, custom_instructions="") -> Dict[int, str]:
     """
     Translate subtitle entries preserving structure
     
@@ -322,7 +324,8 @@ async def translate_subtitles(subtitles: List[Dict[str, str]], source_language: 
                 target_language,
                 model_name,
                 api_endpoint_param=api_endpoint,
-                log_callback=log_callback
+                log_callback=log_callback,
+                custom_instructions=custom_instructions
             )
         
         if translated_text is not None:

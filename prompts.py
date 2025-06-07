@@ -1,7 +1,8 @@
 # prompts.py
 def generate_translation_prompt(main_content, context_before, context_after, previous_translation_context,
                                source_language="English", target_language="French", 
-                               translate_tag_in="[TRANSLATED]", translate_tag_out="[/TRANSLATED]"):
+                               translate_tag_in="[TRANSLATED]", translate_tag_out="[/TRANSLATED]",
+                               custom_instructions=""):
     """
     Generate the translation prompt with all contextual elements.
     
@@ -36,6 +37,15 @@ def generate_translation_prompt(main_content, context_before, context_after, pre
 
 """
 
+    custom_instructions_block = ""
+    if custom_instructions and custom_instructions.strip():
+        custom_instructions_block = f"""
+
+### INSTRUCTIONS
+{custom_instructions.strip()}
+
+"""
+
     text_to_translate_block = f"""
 [TO TRANSLATE]
 {main_content}
@@ -43,6 +53,7 @@ def generate_translation_prompt(main_content, context_before, context_after, pre
 
     structured_prompt_parts = [
         role_and_instructions_block,
+        custom_instructions_block,
         previous_translation_block_text,
         text_to_translate_block
     ]

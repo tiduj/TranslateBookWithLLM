@@ -15,7 +15,7 @@ async def translate_text_file_with_callbacks(input_filepath, output_filepath,
                                              model_name=DEFAULT_MODEL, chunk_target_lines_cli=MAIN_LINES_PER_CHUNK,
                                              cli_api_endpoint=API_ENDPOINT,
                                              progress_callback=None, log_callback=None, stats_callback=None,
-                                             check_interruption_callback=None):
+                                             check_interruption_callback=None, custom_instructions=""):
     """
     Translate a text file with callback support
     
@@ -100,7 +100,8 @@ async def translate_text_file_with_callbacks(input_filepath, output_filepath,
         progress_callback=progress_callback,
         log_callback=log_callback,
         stats_callback=stats_callback,
-        check_interruption_callback=check_interruption_callback
+        check_interruption_callback=check_interruption_callback,
+        custom_instructions=custom_instructions
     )
 
     if progress_callback: 
@@ -126,7 +127,7 @@ async def translate_srt_file_with_callbacks(input_filepath, output_filepath,
                                            model_name=DEFAULT_MODEL, chunk_target_lines_cli=MAIN_LINES_PER_CHUNK,
                                            cli_api_endpoint=API_ENDPOINT,
                                            progress_callback=None, log_callback=None, stats_callback=None,
-                                           check_interruption_callback=None):
+                                           check_interruption_callback=None, custom_instructions=""):
     """
     Translate an SRT subtitle file with callback support
     
@@ -213,7 +214,8 @@ async def translate_srt_file_with_callbacks(input_filepath, output_filepath,
         progress_callback=progress_callback,
         log_callback=log_callback,
         stats_callback=stats_callback,
-        check_interruption_callback=check_interruption_callback
+        check_interruption_callback=check_interruption_callback,
+        custom_instructions=custom_instructions
     )
     
     # Update subtitles with translations
@@ -250,7 +252,7 @@ async def translate_file(input_filepath, output_filepath,
                         model_name=DEFAULT_MODEL, chunk_target_size_cli=MAIN_LINES_PER_CHUNK,
                         cli_api_endpoint=API_ENDPOINT,
                         progress_callback=None, log_callback=None, stats_callback=None,
-                        check_interruption_callback=None):
+                        check_interruption_callback=None, custom_instructions=""):
     """
     Translate a file (auto-detect format)
     
@@ -275,7 +277,8 @@ async def translate_file(input_filepath, output_filepath,
                                   model_name, chunk_target_size_cli,
                                   cli_api_endpoint,
                                   progress_callback, log_callback, stats_callback,
-                                  check_interruption_callback=check_interruption_callback)
+                                  check_interruption_callback=check_interruption_callback,
+                                  custom_instructions=custom_instructions)
     elif ext == '.srt':
         await translate_srt_file_with_callbacks(
             input_filepath, output_filepath,
@@ -283,7 +286,8 @@ async def translate_file(input_filepath, output_filepath,
             model_name, chunk_target_size_cli,
             cli_api_endpoint,
             progress_callback, log_callback, stats_callback,
-            check_interruption_callback=check_interruption_callback
+            check_interruption_callback=check_interruption_callback,
+            custom_instructions=custom_instructions
         )
     else:
         await translate_text_file_with_callbacks(
@@ -292,5 +296,6 @@ async def translate_file(input_filepath, output_filepath,
             model_name, chunk_target_size_cli,
             cli_api_endpoint,
             progress_callback, log_callback, stats_callback,
-            check_interruption_callback=check_interruption_callback
+            check_interruption_callback=check_interruption_callback,
+            custom_instructions=custom_instructions
         )

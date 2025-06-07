@@ -18,6 +18,7 @@ if __name__ == "__main__":
     parser.add_argument("-m", "--model", default=DEFAULT_MODEL, help=f"LLM model (default: {DEFAULT_MODEL}).")
     parser.add_argument("-cs", "--chunksize", type=int, default=MAIN_LINES_PER_CHUNK, help=f"Target lines per chunk (default: {MAIN_LINES_PER_CHUNK}).")
     parser.add_argument("--api_endpoint", default=API_ENDPOINT, help=f"Ollama API endpoint (default: {API_ENDPOINT}).")
+    parser.add_argument("--custom_instructions", default="", help="Additional custom instructions for translation.")
 
     args = parser.parse_args()
 
@@ -51,5 +52,6 @@ if __name__ == "__main__":
         progress_callback=None,
         log_callback=None,
         stats_callback=None,
-        check_interruption_callback=None
+        check_interruption_callback=None,
+        custom_instructions=args.custom_instructions
     ))
