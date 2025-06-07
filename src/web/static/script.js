@@ -462,7 +462,8 @@ async function processNextFileInQueue() {
         max_attempts: parseInt(document.getElementById('maxAttempts').value),
         retry_delay: parseInt(document.getElementById('retryDelay').value),
         output_filename: fileToTranslate.outputFilename,
-        file_type: fileToTranslate.fileType
+        file_type: fileToTranslate.fileType,
+        custom_instructions: document.getElementById('customInstructions').value.trim()
     };
 
     if (fileToTranslate.fileType === 'epub' || fileToTranslate.fileType === 'srt') {

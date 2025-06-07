@@ -138,7 +138,7 @@ async def translate_epub_file(input_filepath, output_filepath,
                               model_name=DEFAULT_MODEL, chunk_target_lines_arg=MAIN_LINES_PER_CHUNK,
                               cli_api_endpoint=API_ENDPOINT,
                               progress_callback=None, log_callback=None, stats_callback=None,
-                              check_interruption_callback=None):
+                              check_interruption_callback=None, custom_instructions=""):
     """
     Translate an EPUB file
     
@@ -286,7 +286,7 @@ async def translate_epub_file(input_filepath, output_filepath,
                 # Translate sub-chunks for this job
                 translated_parts = await translate_chunks(
                     job['sub_chunks'], source_language, target_language, 
-                    model_name, cli_api_endpoint, None, log_callback, None, check_interruption_callback
+                    model_name, cli_api_endpoint, None, log_callback, None, check_interruption_callback, custom_instructions
                 )
                 
                 job['translated_text'] = "\n".join(translated_parts)

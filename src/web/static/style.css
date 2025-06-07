@@ -291,3 +291,10 @@ body {
     color: #E0E6E9;
     margin: 5px 0 0 0;
 }
+
+/* Custom Instructions textarea styling */
+#customInstructions {
+    width: 100%;
+    resize: vertical;
+    min-height: 80px;
+}
