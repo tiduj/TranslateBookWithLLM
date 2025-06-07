@@ -50,9 +50,9 @@ async def generate_translation_request(main_content, context_before, context_aft
         custom_instructions
     )
     
-    print("\n----Text To Translate Block----")
-    print({main_content})
-    print("-------------------\n")
+    print("\n-------SENT to LLM-------")
+    print(structured_prompt)
+    print("-------SENT to LLM-------\n")
 
     payload = {
         "model": model, 
@@ -67,9 +67,9 @@ async def generate_translation_request(main_content, context_before, context_aft
         json_response = response.json()
         full_raw_response = json_response.get("response", "")
 
-        print("\n----LLM RESPONSE----")
+        print("\n-------LLM RESPONSE-------")
         print(full_raw_response)
-        print("------------------------\n")
+        print("-------LLM RESPONSE-------\n")
 
         if not full_raw_response and "error" in json_response:
             err_msg = f"LLM API ERROR: {json_response['error']}"
