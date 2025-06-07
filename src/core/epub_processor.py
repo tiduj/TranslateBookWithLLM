@@ -335,6 +335,7 @@ async def translate_epub_file(input_filepath, output_filepath,
             last_successful_llm_context = ""
             completed_jobs_count = 0
             failed_jobs_count = 0
+            context_accumulator = []  # Accumulate recent translations for richer context
 
             iterator_phase2 = tqdm(all_translation_jobs, desc="Translating EPUB segments", unit="seg") if not log_callback else all_translation_jobs
             for job_idx, job in enumerate(iterator_phase2):
@@ -366,11 +367,29 @@ async def translate_epub_file(input_filepath, output_filepath,
                     # Update context with last successful translation
                     if translated_parts:
                         last_translation = "\n".join(translated_parts)
-                        words = last_translation.split()
-                        if len(words) > 150:
-                            last_successful_llm_context = " ".join(words[-150:])
-                        else:
-                            last_successful_llm_context = last_translation
+                        # Add to context accumulator
+                        context_accumulator.append(last_translation)
+                        
+                        # Build context from multiple recent blocks to reach minimum 10 lines
+                        combined_context_lines = []
+                        for recent_translation in reversed(context_accumulator):
+                            # Split into lines and add to beginning of combined context
+                            translation_lines = recent_translation.split('\n')
+                            combined_context_lines = translation_lines + combined_context_lines
+                            
+                            # Stop if we have enough lines (minimum 10 lines or 300 words)
+                            if len(combined_context_lines) >= 10 or len(' '.join(combined_context_lines).split()) >= 300:
+                                break
+                        
+                        # Keep only the most recent context that provides sufficient content
+                        if len(combined_context_lines) > 20:  # Limit to max 20 lines to avoid too much context
+                            combined_context_lines = combined_context_lines[-20:]
+                        
+                        last_successful_llm_context = '\n'.join(combined_context_lines)
+                        
+                        # Keep only recent translations in accumulator (last 10 blocks max)
+                        if len(context_accumulator) > 10:
+                            context_accumulator = context_accumulator[-10:]
 
                 if stats_callback:
                     stats_callback({'completed_chunks': completed_jobs_count, 'failed_chunks': failed_jobs_count})
