@@ -116,7 +116,8 @@ def configure_routes(app, active_translations, output_dir, start_translation_job
             'context_window': int(data.get('context_window', OLLAMA_NUM_CTX)),
             'max_attempts': int(data.get('max_attempts', 2)),
             'retry_delay': int(data.get('retry_delay', 2)),
-            'output_filename': data['output_filename']
+            'output_filename': data['output_filename'],
+            'custom_instructions': data.get('custom_instructions', '')
         }
 
         if 'file_path' in data:

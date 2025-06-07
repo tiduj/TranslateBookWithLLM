@@ -95,6 +95,7 @@ def generate_subtitle_block_prompt(subtitle_blocks, previous_translation_block,
 ## FORMATING
 + Translate ONLY the text enclosed within the tags "[TO TRANSLATE]" and "[/TO TRANSLATE]" from {source_lang} into {target_language}
 + Each subtitle is marked with its index: [index]text
++ A la fin d'UN subtitle passe TOUJOURS à la ligne
 + Preserve the index markers in your translation
 + Surround your ENTIRE translation block with {translate_tag_in} and {translate_tag_out} tags
 + Return ONLY the translation block, formatted as requested
