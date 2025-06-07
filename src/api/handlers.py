@@ -12,6 +12,7 @@ from src.core.text_processor import split_text_into_chunks_with_context
 from src.core.translator import translate_chunks, translate_subtitles
 from src.core.epub_processor import translate_epub_file
 from src.core.srt_processor import SRTProcessor
+from src.utils.unified_logger import setup_web_logger, LogType
 from .websocket import emit_update
 
 
@@ -68,19 +69,47 @@ async def perform_actual_translation(translation_id, config, active_translations
             return True
         return False
 
-    def _log_message_callback(message_key_from_translate_module, message_content=""):
-        timestamp = datetime.now().strftime('%H:%M:%S')
-        full_log_entry = f"[{timestamp}] {message_content}"
-
-        print(full_log_entry)
-
+    # Setup unified logger for web interface
+    def web_callback(log_entry):
+        """Callback for WebSocket emission"""
+        if 'logs' not in active_translations[translation_id]: 
+            active_translations[translation_id]['logs'] = []
+        active_translations[translation_id]['logs'].append(log_entry)
+        emit_update(socketio, translation_id, {'log': log_entry['message']}, active_translations)
+    
+    def storage_callback(log_entry):
+        """Callback for storing logs"""
+        if 'logs' not in active_translations[translation_id]: 
+            active_translations[translation_id]['logs'] = []
+        active_translations[translation_id]['logs'].append(log_entry)
+    
+    logger = setup_web_logger(web_callback, storage_callback)
+    
+    def _log_message_callback(message_key_from_translate_module, message_content="", data=None):
+        """Legacy callback wrapper for backward compatibility"""
+        # Skip debug messages for web interface
         if message_key_from_translate_module in ["llm_prompt_debug", "llm_raw_response_preview"]:
-            pass
+            return
+        
+        # Handle structured data from new logging system
+        if data and isinstance(data, dict):
+            log_type = data.get('type')
+            if log_type == 'llm_request':
+                logger.info("LLM Request", LogType.LLM_REQUEST, data)
+            elif log_type == 'llm_response':
+                logger.info("LLM Response", LogType.LLM_RESPONSE, data)
+            elif log_type == 'progress':
+                logger.info("Progress Update", LogType.PROGRESS, data)
+            else:
+                logger.info(message_content, data=data)
         else:
-            if 'logs' not in active_translations[translation_id]: 
-                active_translations[translation_id]['logs'] = []
-            active_translations[translation_id]['logs'].append(full_log_entry)
-            emit_update(socketio, translation_id, {'log': message_content}, active_translations)
+            # Map specific message patterns to appropriate log types
+            if "error" in message_key_from_translate_module.lower():
+                logger.error(message_content)
+            elif "warning" in message_key_from_translate_module.lower():
+                logger.warning(message_content)
+            else:
+                logger.info(message_content)
 
     def _update_translation_progress_callback(progress_percent):
         if translation_id in active_translations:
@@ -99,10 +128,17 @@ async def perform_actual_translation(translation_id, config, active_translations
             emit_update(socketio, translation_id, {'stats': current_stats}, active_translations)
 
     try:
-        _log_message_callback("config_info", f"🚀 Starting translation ({translation_id}). Config: {config['source_language']} to {config['target_language']}, Model: {config['model']}")
-        _log_message_callback("llm_endpoint_info", f"🔗 LLM Endpoint: {config['llm_api_endpoint']}")
-        _log_message_callback("output_file_info", f"💾 Expected output file: {config['output_filename']}")
-        _log_message_callback("file_type_info", f"📄 File type: {config['file_type']}")
+        # Log translation start with unified logger
+        logger.info("Translation Started", LogType.TRANSLATION_START, {
+            'source_lang': config['source_language'],
+            'target_lang': config['target_language'],
+            'file_type': config['file_type'].upper(),
+            'model': config['model'],
+            'translation_id': translation_id,
+            'output_file': config['output_filename'],
+            'api_endpoint': config['llm_api_endpoint'],
+            'chunk_size': config.get('chunk_size', 'default')
+        })
 
         output_filepath_on_server = os.path.join(output_dir, config['output_filename'])
         

@@ -5,6 +5,7 @@ import json
 import requests
 import re
 import asyncio
+import time
 from tqdm.auto import tqdm
 
 from config import (
@@ -50,9 +51,14 @@ async def generate_translation_request(main_content, context_before, context_aft
         custom_instructions
     )
     
-    print("\n----Text To Translate Block----")
-    print({main_content})
-    print("-------------------\n")
+    # Log LLM request
+    if log_callback:
+        log_callback("", "info", {
+            'type': 'llm_request',
+            'prompt': structured_prompt,
+            'model': model,
+            'endpoint': api_endpoint_param
+        })
 
     payload = {
         "model": model, 
@@ -61,15 +67,21 @@ async def generate_translation_request(main_content, context_before, context_aft
         "options": {"num_ctx": OLLAMA_NUM_CTX}
     }
 
+    start_time = time.time()
     try:
         response = requests.post(api_endpoint_param, json=payload, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
         json_response = response.json()
         full_raw_response = json_response.get("response", "")
+        execution_time = time.time() - start_time
 
-        print("\n----LLM RESPONSE----")
-        print(full_raw_response)
-        print("------------------------\n")
+        # Log LLM response
+        if log_callback:
+            log_callback("", "info", {
+                'type': 'llm_response',
+                'response': full_raw_response,
+                'execution_time': execution_time
+            })
 
         if not full_raw_response and "error" in json_response:
             err_msg = f"LLM API ERROR: {json_response['error']}"
@@ -176,6 +188,12 @@ async def translate_chunks(chunks, source_language, target_language, model_name,
 
         if progress_callback and total_chunks > 0:
             progress_callback((i / total_chunks) * 100)
+        
+        # Log progress summary periodically
+        if log_callback and i > 0 and i % 5 == 0:
+            log_callback("", "info", {
+                'type': 'progress'
+            })
 
         main_content_to_translate = chunk_data["main_content"]
         context_before_text = chunk_data["context_before"]
