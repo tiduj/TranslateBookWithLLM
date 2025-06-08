@@ -6,8 +6,7 @@ import time
 from tqdm.auto import tqdm
 
 from config import (
-    DEFAULT_MODEL, TRANSLATE_TAG_IN, TRANSLATE_TAG_OUT,
-    MAX_TRANSLATION_ATTEMPTS, RETRY_DELAY_SECONDS
+    DEFAULT_MODEL, TRANSLATE_TAG_IN, TRANSLATE_TAG_OUT
 )
 from prompts import generate_translation_prompt, generate_subtitle_block_prompt
 from .llm_client import default_client
@@ -16,7 +15,7 @@ from typing import List, Dict, Tuple
 
 async def generate_translation_request(main_content, context_before, context_after, previous_translation_context,
                                        source_language="English", target_language="French", model=DEFAULT_MODEL,
-                                       api_endpoint_param=None, log_callback=None, custom_instructions=""):
+                                       llm_client=None, log_callback=None, custom_instructions=""):
     """
     Generate translation request to LLM API
     
@@ -51,13 +50,9 @@ async def generate_translation_request(main_content, context_before, context_aft
 
     start_time = time.time()
     
-    # Use custom endpoint if provided, otherwise use default client
-    if api_endpoint_param and api_endpoint_param != default_client.api_endpoint:
-        from .llm_client import LLMClient
-        custom_client = LLMClient(api_endpoint=api_endpoint_param, model=model)
-        full_raw_response = custom_client.make_request(structured_prompt, model)
-    else:
-        full_raw_response = default_client.make_request(structured_prompt, model)
+    # Use provided client or default
+    client = llm_client or default_client
+    full_raw_response = client.make_request(structured_prompt, model)
     execution_time = time.time() - start_time
 
     if not full_raw_response:
@@ -72,7 +67,7 @@ async def generate_translation_request(main_content, context_before, context_aft
     print(full_raw_response)
     print("-------LLM RESPONSE-------\n")
 
-    translated_text = default_client.extract_translation(full_raw_response)
+    translated_text = client.extract_translation(full_raw_response)
     
     if translated_text:
         return translated_text
@@ -123,6 +118,12 @@ async def translate_chunks(chunks, source_language, target_language, model_name,
     if log_callback: 
         log_callback("txt_translation_loop_start", "Starting segment translation...")
 
+    # Create LLM client if custom endpoint is provided
+    llm_client = None
+    if api_endpoint and api_endpoint != default_client.api_endpoint:
+        from .llm_client import LLMClient
+        llm_client = LLMClient(api_endpoint=api_endpoint, model=model_name)
+
     iterator = tqdm(chunks, desc=f"Translating {source_language} to {target_language}", unit="seg") if not log_callback else chunks
 
     for i, chunk_data in enumerate(iterator):
@@ -153,25 +154,12 @@ async def translate_chunks(chunks, source_language, target_language, model_name,
                 stats_callback({'completed_chunks': completed_chunks_count, 'failed_chunks': failed_chunks_count})
             continue
 
-        translated_chunk_text = None
-        current_attempts = 0
-        
-        while current_attempts < MAX_TRANSLATION_ATTEMPTS and translated_chunk_text is None:
-            current_attempts += 1
-            if current_attempts > 1:
-                retry_msg = f"Retrying segment {i+1}/{total_chunks} (attempt {current_attempts}/{MAX_TRANSLATION_ATTEMPTS})..."
-                if log_callback: 
-                    log_callback("txt_chunk_retry", retry_msg)
-                else: 
-                    tqdm.write(f"\n{retry_msg}")
-                await asyncio.sleep(RETRY_DELAY_SECONDS)
-
-            translated_chunk_text = await generate_translation_request(
-                main_content_to_translate, context_before_text, context_after_text,
-                last_successful_llm_context, source_language, target_language,
-                model_name, api_endpoint_param=api_endpoint, log_callback=log_callback,
-                custom_instructions=custom_instructions
-            )
+        translated_chunk_text = await generate_translation_request(
+            main_content_to_translate, context_before_text, context_after_text,
+            last_successful_llm_context, source_language, target_language,
+            model_name, llm_client=llm_client, log_callback=log_callback,
+            custom_instructions=custom_instructions
+        )
 
         if translated_chunk_text is not None:
             full_translation_parts.append(translated_chunk_text)
@@ -182,7 +170,7 @@ async def translate_chunks(chunks, source_language, target_language, model_name,
             else:
                 last_successful_llm_context = translated_chunk_text
         else:
-            err_msg_chunk = f"ERROR translating segment {i+1} after {MAX_TRANSLATION_ATTEMPTS} attempts. Original content preserved."
+            err_msg_chunk = f"ERROR translating segment {i+1}. Original content preserved."
             if log_callback: 
                 log_callback("txt_chunk_translation_error", err_msg_chunk)
             else: 
@@ -227,6 +215,12 @@ async def translate_subtitles(subtitles: List[Dict[str, str]], source_language: 
     if log_callback:
         log_callback("srt_translation_start", f"Starting translation of {total_subtitles} subtitles...")
     
+    # Create LLM client if custom endpoint is provided
+    llm_client = None
+    if api_endpoint and api_endpoint != default_client.api_endpoint:
+        from .llm_client import LLMClient
+        llm_client = LLMClient(api_endpoint=api_endpoint, model=model_name)
+    
     iterator = tqdm(enumerate(subtitles), total=total_subtitles, 
                    desc=f"Translating subtitles ({source_language} to {target_language})", 
                    unit="subtitle") if not log_callback else enumerate(subtitles)
@@ -261,38 +255,25 @@ async def translate_subtitles(subtitles: List[Dict[str, str]], source_language: 
         if idx < len(subtitles) - 1:
             context_after = subtitles[idx+1].get('text', '')
         
-        translated_text = None
-        attempts = 0
-        
-        while attempts < MAX_TRANSLATION_ATTEMPTS and translated_text is None:
-            attempts += 1
-            if attempts > 1:
-                retry_msg = f"Retrying subtitle {idx+1} (attempt {attempts}/{MAX_TRANSLATION_ATTEMPTS})..."
-                if log_callback:
-                    log_callback("srt_subtitle_retry", retry_msg)
-                else:
-                    tqdm.write(f"\n{retry_msg}")
-                await asyncio.sleep(RETRY_DELAY_SECONDS)
-            
-            translated_text = await generate_translation_request(
-                text_to_translate,
-                context_before,
-                context_after,
-                "",
-                source_language,
-                target_language,
-                model_name,
-                api_endpoint_param=api_endpoint,
-                log_callback=log_callback,
-                custom_instructions=custom_instructions
-            )
+        translated_text = await generate_translation_request(
+            text_to_translate,
+            context_before,
+            context_after,
+            "",
+            source_language,
+            target_language,
+            model_name,
+            llm_client=llm_client,
+            log_callback=log_callback,
+            custom_instructions=custom_instructions
+        )
         
         if translated_text is not None:
             translations[idx] = translated_text
             completed_count += 1
         else:
             # Keep original text if translation fails
-            err_msg = f"Failed to translate subtitle {idx+1} after {MAX_TRANSLATION_ATTEMPTS} attempts"
+            err_msg = f"Failed to translate subtitle {idx+1}"
             if log_callback:
                 log_callback("srt_subtitle_error", err_msg)
             else:
@@ -352,6 +333,12 @@ async def translate_subtitles_in_blocks(subtitle_blocks: List[List[Dict[str, str
         log_callback("srt_block_translation_start", 
                     f"Starting block translation: {total_subtitles} subtitles in {total_blocks} blocks...")
     
+    # Create LLM client if custom endpoint is provided
+    llm_client = None
+    if api_endpoint and api_endpoint != default_client.api_endpoint:
+        from .llm_client import LLMClient
+        llm_client = LLMClient(api_endpoint=api_endpoint, model=model_name)
+    
     for block_idx, block in enumerate(subtitle_blocks):
         if check_interruption_callback and check_interruption_callback():
             if log_callback:
@@ -389,49 +376,29 @@ async def translate_subtitles_in_blocks(subtitle_blocks: List[List[Dict[str, str
             custom_instructions
         )
         
-        # Translation attempts for the block
-        translated_block_text = None
-        attempts = 0
-        
-        while attempts < MAX_TRANSLATION_ATTEMPTS and translated_block_text is None:
-            attempts += 1
-            if attempts > 1:
-                retry_msg = f"Retrying block {block_idx+1} (attempt {attempts}/{MAX_TRANSLATION_ATTEMPTS})..."
-                if log_callback:
-                    log_callback("srt_block_retry", retry_msg)
-                else:
-                    tqdm.write(f"\n{retry_msg}")
-                await asyncio.sleep(RETRY_DELAY_SECONDS)
+        # Make translation request using LLM client
+        try:
+            print("\n-------SENT to LLM-------")
+            print(prompt)
+            print("-------SENT to LLM-------\n")
             
-            # Make translation request using LLM client
-            try:
-                print("\n-------SENT to LLM-------")
-                print(prompt)
-                print("-------SENT to LLM-------\n")
-                
-                # Use custom endpoint if provided, otherwise use default client
-                if api_endpoint and api_endpoint != default_client.api_endpoint:
-                    from .llm_client import LLMClient
-                    custom_client = LLMClient(api_endpoint=api_endpoint, model=model_name)
-                    full_raw_response = custom_client.make_request(prompt, model_name)
-                    client_to_use = custom_client
-                else:
-                    full_raw_response = default_client.make_request(prompt, model_name)
-                    client_to_use = default_client
-                
-                print("\n-------LLM RESPONSE-------")
-                print(full_raw_response or "None")
-                print("-------LLM RESPONSE-------\n")
-                
-                if full_raw_response:
-                    translated_block_text = client_to_use.extract_translation(full_raw_response)
-                else:
-                    translated_block_text = None
-                        
-            except Exception as e:
-                if log_callback:
-                    log_callback("srt_block_translation_error", f"Error: {str(e)}")
+            # Use provided client or default
+            client = llm_client or default_client
+            full_raw_response = client.make_request(prompt, model_name)
+            
+            print("\n-------LLM RESPONSE-------")
+            print(full_raw_response or "None")
+            print("-------LLM RESPONSE-------\n")
+            
+            if full_raw_response:
+                translated_block_text = client.extract_translation(full_raw_response)
+            else:
                 translated_block_text = None
+                    
+        except Exception as e:
+            if log_callback:
+                log_callback("srt_block_translation_error", f"Error: {str(e)}")
+            translated_block_text = None
         
         if translated_block_text:
             # Extract individual translations from block
@@ -462,7 +429,7 @@ async def translate_subtitles_in_blocks(subtitle_blocks: List[List[Dict[str, str
             
         else:
             # Block translation failed - keep original text
-            err_msg = f"Failed to translate block {block_idx+1} after {MAX_TRANSLATION_ATTEMPTS} attempts"
+            err_msg = f"Failed to translate block {block_idx+1}"
             if log_callback:
                 log_callback("srt_block_error", err_msg)
             else:

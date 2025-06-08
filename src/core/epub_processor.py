@@ -78,6 +78,8 @@ def _collect_epub_translation_jobs_recursive(element, file_path_abs, jobs_list, 
                     'file_path': file_path_abs,
                     'translated_text': None
                 })
+        # For block elements, we already processed all content, so don't process children
+        return
     else:
         if element.text:
             original_text_content = element.text
@@ -130,7 +132,7 @@ def _collect_epub_translation_jobs_recursive(element, file_path_abs, jobs_list, 
 
 
 async def translate_epub_chunks_with_context(chunks, source_language, target_language, model_name, 
-                                           api_endpoint, previous_context, log_callback=None, 
+                                           llm_client, previous_context, log_callback=None, 
                                            check_interruption_callback=None, custom_instructions=""):
     """
     Translate EPUB chunks with previous translation context for consistency
@@ -150,7 +152,6 @@ async def translate_epub_chunks_with_context(chunks, source_language, target_lan
         list: List of translated chunks
     """
     import asyncio
-    from config import MAX_TRANSLATION_ATTEMPTS, RETRY_DELAY_SECONDS
     
     total_chunks = len(chunks)
     translated_parts = []
@@ -169,28 +170,17 @@ async def translate_epub_chunks_with_context(chunks, source_language, target_lan
             translated_parts.append(main_content_to_translate)
             continue
 
-        translated_chunk_text = None
-        current_attempts = 0
-        
-        while current_attempts < MAX_TRANSLATION_ATTEMPTS and translated_chunk_text is None:
-            current_attempts += 1
-            if current_attempts > 1:
-                retry_msg = f"Retrying EPUB chunk {i+1}/{total_chunks} (attempt {current_attempts}/{MAX_TRANSLATION_ATTEMPTS})..."
-                if log_callback: 
-                    log_callback("epub_chunk_retry", retry_msg)
-                await asyncio.sleep(RETRY_DELAY_SECONDS)
-
-            translated_chunk_text = await generate_translation_request(
-                main_content_to_translate, context_before_text, context_after_text,
-                previous_context, source_language, target_language,
-                model_name, api_endpoint_param=api_endpoint, log_callback=log_callback,
-                custom_instructions=custom_instructions
-            )
+        translated_chunk_text = await generate_translation_request(
+            main_content_to_translate, context_before_text, context_after_text,
+            previous_context, source_language, target_language,
+            model_name, llm_client=llm_client, log_callback=log_callback,
+            custom_instructions=custom_instructions
+        )
 
         if translated_chunk_text is not None:
             translated_parts.append(translated_chunk_text)
         else:
-            err_msg_chunk = f"ERROR translating EPUB chunk {i+1} after {MAX_TRANSLATION_ATTEMPTS} attempts. Original content preserved."
+            err_msg_chunk = f"ERROR translating EPUB chunk {i+1}. Original content preserved."
             if log_callback: 
                 log_callback("epub_chunk_translation_error", err_msg_chunk)
             error_placeholder = f"[TRANSLATION_ERROR EPUB CHUNK {i+1}]\n{main_content_to_translate}\n[/TRANSLATION_ERROR EPUB CHUNK {i+1}]"
@@ -332,6 +322,12 @@ async def translate_epub_file(input_filepath, output_filepath,
             if log_callback: 
                 log_callback("epub_phase2_start", "\nPhase 2: Translating EPUB text segments...")
 
+            # Create LLM client if custom endpoint is provided
+            from .llm_client import LLMClient, default_client
+            llm_client = None
+            if cli_api_endpoint and cli_api_endpoint != default_client.api_endpoint:
+                llm_client = LLMClient(api_endpoint=cli_api_endpoint, model=model_name)
+
             last_successful_llm_context = ""
             completed_jobs_count = 0
             failed_jobs_count = 0
@@ -353,7 +349,7 @@ async def translate_epub_file(input_filepath, output_filepath,
                 # Translate sub-chunks for this job with previous context
                 translated_parts = await translate_epub_chunks_with_context(
                     job['sub_chunks'], source_language, target_language, 
-                    model_name, cli_api_endpoint, last_successful_llm_context, 
+                    model_name, llm_client or default_client, last_successful_llm_context, 
                     log_callback, check_interruption_callback, custom_instructions
                 )
                 
