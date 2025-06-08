@@ -34,6 +34,12 @@ async def generate_translation_request(main_content, context_before, context_aft
     Returns:
         str: Translated text or None if failed
     """
+    # Skip LLM translation for single character or empty chunks
+    if len(main_content.strip()) <= 1:
+        if log_callback:
+            log_callback("skip_translation", f"Skipping LLM for single/empty character: '{main_content}'")
+        return main_content
+    
     structured_prompt = generate_translation_prompt(
         main_content, 
         context_before, 
