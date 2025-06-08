@@ -78,6 +78,8 @@ def _collect_epub_translation_jobs_recursive(element, file_path_abs, jobs_list, 
                     'file_path': file_path_abs,
                     'translated_text': None
                 })
+        # For block elements, we already processed all content, so don't process children
+        return
     else:
         if element.text:
             original_text_content = element.text
