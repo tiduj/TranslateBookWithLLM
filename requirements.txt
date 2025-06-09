@@ -4,5 +4,6 @@ flask-socketio
 python-socketio
 requests
 tqdm
-aiohttp
+httpx
 lxml
+python-dotenv

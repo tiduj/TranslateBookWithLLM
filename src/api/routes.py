@@ -10,7 +10,7 @@ from pathlib import Path
 
 from src.utils.security import SecureFileHandler, rate_limiter, get_client_ip, SecurityError
 
-from config import (
+from src.config import (
     API_ENDPOINT as DEFAULT_OLLAMA_API_ENDPOINT,
     DEFAULT_MODEL,
     MAIN_LINES_PER_CHUNK,

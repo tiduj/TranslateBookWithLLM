@@ -7,7 +7,7 @@ from flask import Flask, send_from_directory
 from flask_cors import CORS
 from flask_socketio import SocketIO
 
-from config import (
+from src.config import (
     API_ENDPOINT as DEFAULT_OLLAMA_API_ENDPOINT,
     DEFAULT_MODEL,
     MAIN_LINES_PER_CHUNK,

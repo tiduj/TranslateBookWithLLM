@@ -7,7 +7,7 @@ from src.core.text_processor import split_text_into_chunks_with_context
 from src.core.translator import translate_chunks, translate_subtitles, translate_subtitles_in_blocks
 from src.core.epub_processor import translate_epub_file
 from src.core.srt_processor import SRTProcessor
-from config import DEFAULT_MODEL, MAIN_LINES_PER_CHUNK, API_ENDPOINT, SRT_LINES_PER_BLOCK, SRT_MAX_CHARS_PER_BLOCK
+from src.config import DEFAULT_MODEL, MAIN_LINES_PER_CHUNK, API_ENDPOINT, SRT_LINES_PER_BLOCK, SRT_MAX_CHARS_PER_BLOCK
 
 
 async def translate_text_file_with_callbacks(input_filepath, output_filepath,

@@ -1,4 +1,4 @@
-from config import TRANSLATE_TAG_IN, TRANSLATE_TAG_OUT, INPUT_TAG_IN, INPUT_TAG_OUT
+from src.config import TRANSLATE_TAG_IN, TRANSLATE_TAG_OUT, INPUT_TAG_IN, INPUT_TAG_OUT
 
 def generate_translation_prompt(main_content, context_before, context_after, previous_translation_context,
                                source_language="English", target_language="French", 
