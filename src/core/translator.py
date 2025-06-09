@@ -58,7 +58,7 @@ async def generate_translation_request(main_content, context_before, context_aft
     
     # Use provided client or default
     client = llm_client or default_client
-    full_raw_response = client.make_request(structured_prompt, model)
+    full_raw_response = await client.make_request(structured_prompt, model)
     execution_time = time.time() - start_time
 
     if not full_raw_response:
@@ -390,7 +390,7 @@ async def translate_subtitles_in_blocks(subtitle_blocks: List[List[Dict[str, str
             
             # Use provided client or default
             client = llm_client or default_client
-            full_raw_response = client.make_request(prompt, model_name)
+            full_raw_response = await client.make_request(prompt, model_name)
             
             print("\n-------LLM RESPONSE-------")
             print(full_raw_response or "None")

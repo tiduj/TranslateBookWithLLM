@@ -3,7 +3,7 @@ Centralized LLM client for all API communication
 """
 import json
 import re
-import requests
+import httpx
 from typing import Optional, Dict, Any
 
 from config import (
@@ -24,7 +24,7 @@ class LLMClient:
             re.DOTALL
         )
     
-    def make_request(self, prompt: str, model: Optional[str] = None, 
+    async def make_request(self, prompt: str, model: Optional[str] = None, 
                     timeout: int = REQUEST_TIMEOUT) -> Optional[str]:
         """
         Make a request to the LLM API with error handling and retries
@@ -45,42 +45,43 @@ class LLMClient:
             "options": {"num_ctx": OLLAMA_NUM_CTX}
         }
         
-        for attempt in range(MAX_TRANSLATION_ATTEMPTS):
-            try:
-                print(f"LLM API Request to {self.api_endpoint} with model {payload['model']}")
-                response = requests.post(
-                    self.api_endpoint, 
-                    json=payload, 
-                    timeout=timeout
-                )
-                response.raise_for_status()
-                
-                response_json = response.json()
-                response_text = response_json.get("response", "")
-                print(f"LLM API Response received: {len(response_text)} characters")
-                return response_text
-                
-            except requests.exceptions.Timeout as e:
-                print(f"LLM API Timeout (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
-                if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
-                    continue
-                return None
-            except requests.exceptions.HTTPError as e:
-                print(f"LLM API HTTP Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
-                if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
-                    continue
-                return None
-            except json.JSONDecodeError as e:
-                print(f"LLM API JSON Decode Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
-                if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
-                    continue
-                return None
-            except Exception as e:
-                print(f"LLM API Unknown Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
-                if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
-                    continue
-                return None
-                
+        async with httpx.AsyncClient() as client:
+            for attempt in range(MAX_TRANSLATION_ATTEMPTS):
+                try:
+                    print(f"LLM API Request to {self.api_endpoint} with model {payload['model']}")
+                    response = await client.post(
+                        self.api_endpoint, 
+                        json=payload, 
+                        timeout=timeout
+                    )
+                    response.raise_for_status()
+                    
+                    response_json = response.json()
+                    response_text = response_json.get("response", "")
+                    print(f"LLM API Response received: {len(response_text)} characters")
+                    return response_text
+                    
+                except httpx.TimeoutException as e:
+                    print(f"LLM API Timeout (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
+                    if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
+                        continue
+                    return None
+                except httpx.HTTPStatusError as e:
+                    print(f"LLM API HTTP Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
+                    if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
+                        continue
+                    return None
+                except json.JSONDecodeError as e:
+                    print(f"LLM API JSON Decode Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
+                    if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
+                        continue
+                    return None
+                except Exception as e:
+                    print(f"LLM API Unknown Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
+                    if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
+                        continue
+                    return None
+                    
         return None
     
     def extract_translation(self, response: str) -> Optional[str]:
@@ -101,7 +102,7 @@ class LLMClient:
             return match.group(1).strip()
         return None
     
-    def translate_text(self, prompt: str, model: Optional[str] = None) -> Optional[str]:
+    async def translate_text(self, prompt: str, model: Optional[str] = None) -> Optional[str]:
         """
         Complete translation workflow: request + extraction
         
@@ -112,7 +113,7 @@ class LLMClient:
         Returns:
             Extracted translation or None if failed
         """
-        response = self.make_request(prompt, model)
+        response = await self.make_request(prompt, model)
         if response:
             return self.extract_translation(response)
         return None

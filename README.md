@@ -75,7 +75,7 @@ git clone https://github.com/hydropix/TranslateBookWithLLM.git .
 conda activate translate_book_env
 
 # Install web interface dependencies (recommended)
-pip install flask flask-cors flask-socketio python-socketio requests tqdm aiohttp lxml
+pip install flask flask-cors flask-socketio python-socketio requests tqdm httpx lxml
 
 # Or install minimal dependencies for CLI only
 pip install requests tqdm
@@ -362,7 +362,7 @@ The web interface communicates via REST API and WebSocket for real-time progress
 ### Key Features Implementation
 
 #### Asynchronous Processing
-- Uses `aiohttp` for concurrent API requests
+- Uses `httpx` for concurrent API requests
 - Implements retry logic with exponential backoff
 - Configurable timeout handling for long translations
 
