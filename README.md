@@ -2,7 +2,7 @@
     <img src="https://github.com/hydropix/TranslateBookWithLLM/blob/main/src/web/static/TBL-Logo.png?raw=true" alt="Logo de l'application">
 </p>
 
-*Translating books with local LLMs powered by Ollama. TBL is a Python application designed for large-scale text translation, such as entire books, subtitle file (SRT) and plain text, leveraging local LLMs via the Ollama API. The tool offers both a **modern web interface** for ease of use and a command-line interface for advanced users.*
+*TBL is a Python application designed for large-scale text translation, such as entire books, subtitle file (SRT) and plain text, leveraging local LLMs via the Ollama API. The tool offers both a **modern web interface** for ease of use and a command-line interface for advanced users.*
 
 ## Features
 
