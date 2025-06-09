@@ -63,23 +63,51 @@ def _collect_epub_translation_jobs_recursive(element, file_path_abs, jobs_list, 
         return
 
     if element.tag in CONTENT_BLOCK_TAGS_EPUB:
-        text_content_for_chunking = _get_node_text_content_with_br_as_newline(element).strip()
-        if text_content_for_chunking:
-            sub_chunks = split_text_into_chunks_with_context(text_content_for_chunking, chunk_size)
-            if not sub_chunks and text_content_for_chunking:
-                sub_chunks = [{"context_before": "", "main_content": text_content_for_chunking, "context_after": ""}]
+        # Check if this block element contains other block elements
+        has_block_children = any(child.tag in CONTENT_BLOCK_TAGS_EPUB for child in element)
+        
+        if has_block_children:
+            # If it has block children, don't process as a single block
+            # Instead, process only direct text if any
+            if element.text and element.text.strip():
+                original_text_content = element.text
+                text_to_translate = original_text_content.strip()
+                leading_space = original_text_content[:len(original_text_content) - len(original_text_content.lstrip())]
+                trailing_space = original_text_content[len(original_text_content.rstrip()):]
+                sub_chunks = split_text_into_chunks_with_context(text_to_translate, chunk_size)
+                if not sub_chunks and text_to_translate:
+                    sub_chunks = [{"context_before": "", "main_content": text_to_translate, "context_after": ""}]
 
-            if sub_chunks:
-                jobs_list.append({
-                    'element_ref': element,
-                    'type': 'block_content',
-                    'original_text_stripped': text_content_for_chunking,
-                    'sub_chunks': sub_chunks,
-                    'file_path': file_path_abs,
-                    'translated_text': None
-                })
-        # For block elements, we already processed all content, so don't process children
-        # return
+                if sub_chunks:
+                    jobs_list.append({
+                        'element_ref': element,
+                        'type': 'text',
+                        'original_text_stripped': text_to_translate,
+                        'sub_chunks': sub_chunks,
+                        'leading_space': leading_space,
+                        'trailing_space': trailing_space,
+                        'file_path': file_path_abs,
+                        'translated_text': None
+                    })
+        else:
+            # No block children, process entire content as a block
+            text_content_for_chunking = _get_node_text_content_with_br_as_newline(element).strip()
+            if text_content_for_chunking:
+                sub_chunks = split_text_into_chunks_with_context(text_content_for_chunking, chunk_size)
+                if not sub_chunks and text_content_for_chunking:
+                    sub_chunks = [{"context_before": "", "main_content": text_content_for_chunking, "context_after": ""}]
+
+                if sub_chunks:
+                    jobs_list.append({
+                        'element_ref': element,
+                        'type': 'block_content',
+                        'original_text_stripped': text_content_for_chunking,
+                        'sub_chunks': sub_chunks,
+                        'file_path': file_path_abs,
+                        'translated_text': None
+                    })
+            # For block elements without block children, don't process children
+            return
     else:
         if element.text:
             original_text_content = element.text
