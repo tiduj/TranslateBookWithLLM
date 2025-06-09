@@ -75,10 +75,10 @@ git clone https://github.com/hydropix/TranslateBookWithLLM.git .
 conda activate translate_book_env
 
 # Install web interface dependencies (recommended)
-pip install flask flask-cors flask-socketio python-socketio requests tqdm httpx lxml
+pip install flask flask-cors flask-socketio python-socketio requests tqdm httpx lxml python-dotenv
 
 # Or install minimal dependencies for CLI only
-pip install requests tqdm
+pip install requests tqdm python-dotenv
 
 # For EPUB support, also install:
 pip install lxml
@@ -190,26 +190,44 @@ The web interface provides easy access to:
 
 ### Configuration Files
 
-All configuration is centralized in two files:
+Configuration is centralized in `src/config.py` with support for environment variables:
 
-#### config.py - Main Settings
+#### Environment Variables (.env file)
+
+Create a `.env` file in the project root to override default settings:
+
+```bash
+# Copy the example file
+cp .env.example .env
+
+# Edit with your settings
+API_ENDPOINT=http://localhost:11434/api/generate
+DEFAULT_MODEL=mistral-small:24b
+MAIN_LINES_PER_CHUNK=25
+# ... see .env.example for all available settings
+```
+
+#### src/config.py - Main Settings
 ```python
+# Configuration loads from environment variables (via .env file)
+# with fallback to defaults:
+
 # API and Model Configuration
-API_ENDPOINT = "http://localhost:11434/api/generate"
-DEFAULT_MODEL = "mistral-small:24b"
+API_ENDPOINT = os.getenv('API_ENDPOINT', 'http://localhost:11434/api/generate')
+DEFAULT_MODEL = os.getenv('DEFAULT_MODEL', 'mistral-small:24b')
 
 # Processing Parameters
-MAIN_LINES_PER_CHUNK = 25          # Default chunk size
-REQUEST_TIMEOUT = 60               # API timeout (seconds)
-OLLAMA_NUM_CTX = 2048             # Context window size
-MAX_TRANSLATION_ATTEMPTS = 2       # Retry attempts
-RETRY_DELAY_SECONDS = 2           # Wait between retries
+MAIN_LINES_PER_CHUNK = int(os.getenv('MAIN_LINES_PER_CHUNK', '25'))
+REQUEST_TIMEOUT = int(os.getenv('REQUEST_TIMEOUT', '60'))
+OLLAMA_NUM_CTX = int(os.getenv('OLLAMA_NUM_CTX', '2048'))
+MAX_TRANSLATION_ATTEMPTS = int(os.getenv('MAX_TRANSLATION_ATTEMPTS', '2'))
+RETRY_DELAY_SECONDS = int(os.getenv('RETRY_DELAY_SECONDS', '2'))
 
-# Translation Tags
-TRANSLATE_TAG_IN = "[TRANSLATED]"
-TRANSLATE_TAG_OUT = "[/TRANSLATED]"
+# Translation Tags (hardcoded)
+TRANSLATE_TAG_IN = "<TRANSLATED>"
+TRANSLATE_TAG_OUT = "</TRANSLATED>"
 
-# EPUB Processing (namespaces and content tags)
+# EPUB Processing (hardcoded)
 NAMESPACES = {...}                # XML namespace mappings
 CONTENT_BLOCK_TAGS_EPUB = [...]   # Tags to translate
 ```
@@ -347,8 +365,11 @@ src/
 ### Root Level Files
 - **`translate.py`**: CLI interface (lightweight wrapper around core modules)
 - **`translation_api.py`**: Web server entry point
-- **`config.py`**: Centralized configuration for all settings
 - **`prompts.py`**: Translation prompt generation and management
+- **`.env.example`**: Example environment variables file
+
+### Configuration Files
+- **`src/config.py`**: Centralized configuration with environment variable support
 
 ### Translation Pipeline
 1. **Text Processing**: Intelligent chunking preserving sentence boundaries

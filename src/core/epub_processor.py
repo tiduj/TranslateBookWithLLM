@@ -7,7 +7,7 @@ import tempfile
 from lxml import etree
 from tqdm.auto import tqdm
 
-from config import (
+from src.config import (
     NAMESPACES, IGNORED_TAGS_EPUB, CONTENT_BLOCK_TAGS_EPUB,
     DEFAULT_MODEL, MAIN_LINES_PER_CHUNK, API_ENDPOINT
 )

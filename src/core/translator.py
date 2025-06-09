@@ -5,7 +5,7 @@ import asyncio
 import time
 from tqdm.auto import tqdm
 
-from config import (
+from src.config import (
     DEFAULT_MODEL, TRANSLATE_TAG_IN, TRANSLATE_TAG_OUT
 )
 from prompts import generate_translation_prompt, generate_subtitle_block_prompt

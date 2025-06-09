@@ -5,7 +5,7 @@ import os
 import argparse
 import asyncio
 
-from config import DEFAULT_MODEL, MAIN_LINES_PER_CHUNK, API_ENDPOINT
+from src.config import DEFAULT_MODEL, MAIN_LINES_PER_CHUNK, API_ENDPOINT
 from src.utils.file_utils import translate_file
 from src.utils.unified_logger import setup_cli_logger, LogType
 

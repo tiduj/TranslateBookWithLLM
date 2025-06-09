@@ -6,7 +6,7 @@ import re
 import httpx
 from typing import Optional, Dict, Any
 
-from config import (
+from src.config import (
     API_ENDPOINT, DEFAULT_MODEL, REQUEST_TIMEOUT, OLLAMA_NUM_CTX,
     MAX_TRANSLATION_ATTEMPTS, RETRY_DELAY_SECONDS, 
     TRANSLATE_TAG_IN, TRANSLATE_TAG_OUT

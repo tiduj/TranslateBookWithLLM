@@ -2,7 +2,7 @@
 Text processing module for chunking and context management
 """
 import re
-from config import SENTENCE_TERMINATORS
+from src.config import SENTENCE_TERMINATORS
 
 
 def get_adjusted_start_index(all_lines, intended_start_idx, max_look_back_lines=20):

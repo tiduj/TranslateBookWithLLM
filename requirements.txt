@@ -6,3 +6,4 @@ requests
 tqdm
 httpx
 lxml
+python-dotenv
