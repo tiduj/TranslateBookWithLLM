@@ -1,31 +1,36 @@
 """
 Centralized LLM client for all API communication
 """
-import json
-import re
-import httpx
 from typing import Optional, Dict, Any
 
-from src.config import (
-    API_ENDPOINT, DEFAULT_MODEL, REQUEST_TIMEOUT, OLLAMA_NUM_CTX,
-    MAX_TRANSLATION_ATTEMPTS, RETRY_DELAY_SECONDS, 
-    TRANSLATE_TAG_IN, TRANSLATE_TAG_OUT
-)
+from src.config import API_ENDPOINT, DEFAULT_MODEL
+from src.core.llm_providers import create_llm_provider, LLMProvider
 
 
 class LLMClient:
     """Centralized client for LLM API communication"""
     
-    def __init__(self, api_endpoint: str = API_ENDPOINT, model: str = DEFAULT_MODEL):
-        self.api_endpoint = api_endpoint
-        self.model = model
-        self._compiled_regex = re.compile(
-            rf"{re.escape(TRANSLATE_TAG_IN)}(.*?){re.escape(TRANSLATE_TAG_OUT)}", 
-            re.DOTALL
-        )
+    def __init__(self, provider_type: str = "ollama", **kwargs):
+        self.provider_type = provider_type
+        self.provider_kwargs = kwargs
+        self._provider: Optional[LLMProvider] = None
+        
+        # For backward compatibility
+        if "api_endpoint" in kwargs and "model" in kwargs:
+            self.api_endpoint = kwargs["api_endpoint"]
+            self.model = kwargs["model"]
+        else:
+            self.api_endpoint = API_ENDPOINT
+            self.model = DEFAULT_MODEL
+    
+    def _get_provider(self) -> LLMProvider:
+        """Get or create the LLM provider"""
+        if not self._provider:
+            self._provider = create_llm_provider(self.provider_type, **self.provider_kwargs)
+        return self._provider
     
     async def make_request(self, prompt: str, model: Optional[str] = None, 
-                    timeout: int = REQUEST_TIMEOUT) -> Optional[str]:
+                    timeout: int = None) -> Optional[str]:
         """
         Make a request to the LLM API with error handling and retries
         
@@ -37,52 +42,16 @@ class LLMClient:
         Returns:
             Raw response text or None if failed
         """
-        payload = {
-            "model": model or self.model,
-            "prompt": prompt,
-            "stream": False,
-            "think": False,
-            "options": {"num_ctx": OLLAMA_NUM_CTX}
-        }
+        provider = self._get_provider()
         
-        async with httpx.AsyncClient() as client:
-            for attempt in range(MAX_TRANSLATION_ATTEMPTS):
-                try:
-                    print(f"LLM API Request to {self.api_endpoint} with model {payload['model']}")
-                    response = await client.post(
-                        self.api_endpoint, 
-                        json=payload, 
-                        timeout=timeout
-                    )
-                    response.raise_for_status()
-                    
-                    response_json = response.json()
-                    response_text = response_json.get("response", "")
-                    print(f"LLM API Response received: {len(response_text)} characters")
-                    return response_text
-                    
-                except httpx.TimeoutException as e:
-                    print(f"LLM API Timeout (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
-                    if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
-                        continue
-                    return None
-                except httpx.HTTPStatusError as e:
-                    print(f"LLM API HTTP Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
-                    if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
-                        continue
-                    return None
-                except json.JSONDecodeError as e:
-                    print(f"LLM API JSON Decode Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
-                    if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
-                        continue
-                    return None
-                except Exception as e:
-                    print(f"LLM API Unknown Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
-                    if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
-                        continue
-                    return None
-                    
-        return None
+        # Update model if specified
+        if model:
+            provider.model = model
+            
+        if timeout:
+            return await provider.generate(prompt, timeout)
+        else:
+            return await provider.generate(prompt)
     
     def extract_translation(self, response: str) -> Optional[str]:
         """
@@ -94,13 +63,8 @@ class LLMClient:
         Returns:
             Extracted translation or None if not found
         """
-        if not response:
-            return None
-            
-        match = self._compiled_regex.search(response)
-        if match:
-            return match.group(1).strip()
-        return None
+        provider = self._get_provider()
+        return provider.extract_translation(response)
     
     async def translate_text(self, prompt: str, model: Optional[str] = None) -> Optional[str]:
         """
@@ -113,11 +77,14 @@ class LLMClient:
         Returns:
             Extracted translation or None if failed
         """
-        response = await self.make_request(prompt, model)
-        if response:
-            return self.extract_translation(response)
-        return None
+        provider = self._get_provider()
+        
+        # Update model if specified
+        if model:
+            provider.model = model
+            
+        return await provider.translate_text(prompt)
 
 
 # Global instance for backward compatibility
-default_client = LLMClient()
+default_client = LLMClient(provider_type="ollama", api_endpoint=API_ENDPOINT, model=DEFAULT_MODEL)

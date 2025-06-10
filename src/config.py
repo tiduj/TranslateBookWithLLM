@@ -18,6 +18,11 @@ OLLAMA_NUM_CTX = int(os.getenv('OLLAMA_NUM_CTX', '2048'))
 MAX_TRANSLATION_ATTEMPTS = int(os.getenv('MAX_TRANSLATION_ATTEMPTS', '2'))
 RETRY_DELAY_SECONDS = int(os.getenv('RETRY_DELAY_SECONDS', '2'))
 
+# LLM Provider configuration
+LLM_PROVIDER = os.getenv('LLM_PROVIDER', 'ollama')  # 'ollama' or 'gemini'
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY', '')
+GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-2.0-flash')
+
 # SRT-specific configuration
 SRT_LINES_PER_BLOCK = int(os.getenv('SRT_LINES_PER_BLOCK', '5'))
 SRT_MAX_CHARS_PER_BLOCK = int(os.getenv('SRT_MAX_CHARS_PER_BLOCK', '500'))
@@ -68,6 +73,10 @@ class TranslationConfig:
     model: str = DEFAULT_MODEL
     api_endpoint: str = API_ENDPOINT
     
+    # LLM Provider settings
+    llm_provider: str = LLM_PROVIDER
+    gemini_api_key: str = GEMINI_API_KEY
+    
     # Translation parameters
     chunk_size: int = MAIN_LINES_PER_CHUNK
     custom_instructions: str = ""
@@ -94,7 +103,9 @@ class TranslationConfig:
             chunk_size=args.chunksize,
             custom_instructions=args.custom_instructions,
             interface_type="cli",
-            enable_colors=not args.no_color
+            enable_colors=not args.no_color,
+            llm_provider=getattr(args, 'provider', LLM_PROVIDER),
+            gemini_api_key=getattr(args, 'gemini_api_key', GEMINI_API_KEY)
         )
     
     @classmethod
@@ -112,7 +123,9 @@ class TranslationConfig:
             retry_delay=request_data.get('retry_delay', RETRY_DELAY_SECONDS),
             context_window=request_data.get('context_window', OLLAMA_NUM_CTX),
             interface_type="web",
-            enable_interruption=True
+            enable_interruption=True,
+            llm_provider=request_data.get('llm_provider', LLM_PROVIDER),
+            gemini_api_key=request_data.get('gemini_api_key', GEMINI_API_KEY)
         )
     
     def to_dict(self) -> dict:
@@ -127,5 +140,7 @@ class TranslationConfig:
             'timeout': self.timeout,
             'max_attempts': self.max_attempts,
             'retry_delay': self.retry_delay,
-            'context_window': self.context_window
+            'context_window': self.context_window,
+            'llm_provider': self.llm_provider,
+            'gemini_api_key': self.gemini_api_key
         }

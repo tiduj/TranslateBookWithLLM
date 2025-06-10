@@ -97,7 +97,8 @@ async def generate_translation_request(main_content, context_before, context_aft
 
 async def translate_chunks(chunks, source_language, target_language, model_name, 
                           api_endpoint, progress_callback=None, log_callback=None, 
-                          stats_callback=None, check_interruption_callback=None, custom_instructions=""):
+                          stats_callback=None, check_interruption_callback=None, custom_instructions="",
+                          llm_provider="ollama", gemini_api_key=None):
     """
     Translate a list of text chunks
     
@@ -124,11 +125,20 @@ async def translate_chunks(chunks, source_language, target_language, model_name,
     if log_callback: 
         log_callback("txt_translation_loop_start", "Starting segment translation...")
 
-    # Create LLM client if custom endpoint is provided
+    # Create LLM client based on provider or custom endpoint
     llm_client = None
-    if api_endpoint and api_endpoint != default_client.api_endpoint:
+    print(f"[DEBUG] translate_chunks - Provider: {llm_provider}, Model: {model_name}, Has API Key: {bool(gemini_api_key)}")
+    
+    if llm_provider == "gemini" and gemini_api_key:
         from .llm_client import LLMClient
-        llm_client = LLMClient(api_endpoint=api_endpoint, model=model_name)
+        llm_client = LLMClient(provider_type="gemini", api_key=gemini_api_key, model=model_name)
+        print(f"[DEBUG] Created Gemini client with model {model_name}")
+    elif api_endpoint and api_endpoint != default_client.api_endpoint:
+        from .llm_client import LLMClient
+        llm_client = LLMClient(provider_type="ollama", api_endpoint=api_endpoint, model=model_name)
+        print(f"[DEBUG] Created Ollama client with endpoint {api_endpoint}")
+    else:
+        print(f"[DEBUG] Using default client (provider: {default_client.provider_type})")
 
     iterator = tqdm(chunks, desc=f"Translating {source_language} to {target_language}", unit="seg") if not log_callback else chunks
 
@@ -195,7 +205,8 @@ async def translate_chunks(chunks, source_language, target_language, model_name,
 async def translate_subtitles(subtitles: List[Dict[str, str]], source_language: str, 
                             target_language: str, model_name: str, api_endpoint: str,
                             progress_callback=None, log_callback=None, 
-                            stats_callback=None, check_interruption_callback=None, custom_instructions="") -> Dict[int, str]:
+                            stats_callback=None, check_interruption_callback=None, custom_instructions="",
+                            llm_provider="ollama", gemini_api_key=None) -> Dict[int, str]:
     """
     Translate subtitle entries preserving structure
     
@@ -221,11 +232,20 @@ async def translate_subtitles(subtitles: List[Dict[str, str]], source_language: 
     if log_callback:
         log_callback("srt_translation_start", f"Starting translation of {total_subtitles} subtitles...")
     
-    # Create LLM client if custom endpoint is provided
+    # Create LLM client based on provider or custom endpoint
     llm_client = None
-    if api_endpoint and api_endpoint != default_client.api_endpoint:
+    print(f"[DEBUG] translate_chunks - Provider: {llm_provider}, Model: {model_name}, Has API Key: {bool(gemini_api_key)}")
+    
+    if llm_provider == "gemini" and gemini_api_key:
         from .llm_client import LLMClient
-        llm_client = LLMClient(api_endpoint=api_endpoint, model=model_name)
+        llm_client = LLMClient(provider_type="gemini", api_key=gemini_api_key, model=model_name)
+        print(f"[DEBUG] Created Gemini client with model {model_name}")
+    elif api_endpoint and api_endpoint != default_client.api_endpoint:
+        from .llm_client import LLMClient
+        llm_client = LLMClient(provider_type="ollama", api_endpoint=api_endpoint, model=model_name)
+        print(f"[DEBUG] Created Ollama client with endpoint {api_endpoint}")
+    else:
+        print(f"[DEBUG] Using default client (provider: {default_client.provider_type})")
     
     iterator = tqdm(enumerate(subtitles), total=total_subtitles, 
                    desc=f"Translating subtitles ({source_language} to {target_language})", 
@@ -306,7 +326,8 @@ async def translate_subtitles_in_blocks(subtitle_blocks: List[List[Dict[str, str
                                       model_name: str, api_endpoint: str,
                                       progress_callback=None, log_callback=None, 
                                       stats_callback=None, check_interruption_callback=None,
-                                      custom_instructions="") -> Dict[int, str]:
+                                      custom_instructions="", llm_provider="ollama", 
+                                      gemini_api_key=None) -> Dict[int, str]:
     """
     Translate subtitle entries in blocks for better context preservation.
     
@@ -339,11 +360,20 @@ async def translate_subtitles_in_blocks(subtitle_blocks: List[List[Dict[str, str
         log_callback("srt_block_translation_start", 
                     f"Starting block translation: {total_subtitles} subtitles in {total_blocks} blocks...")
     
-    # Create LLM client if custom endpoint is provided
+    # Create LLM client based on provider or custom endpoint
     llm_client = None
-    if api_endpoint and api_endpoint != default_client.api_endpoint:
+    print(f"[DEBUG] translate_chunks - Provider: {llm_provider}, Model: {model_name}, Has API Key: {bool(gemini_api_key)}")
+    
+    if llm_provider == "gemini" and gemini_api_key:
         from .llm_client import LLMClient
-        llm_client = LLMClient(api_endpoint=api_endpoint, model=model_name)
+        llm_client = LLMClient(provider_type="gemini", api_key=gemini_api_key, model=model_name)
+        print(f"[DEBUG] Created Gemini client with model {model_name}")
+    elif api_endpoint and api_endpoint != default_client.api_endpoint:
+        from .llm_client import LLMClient
+        llm_client = LLMClient(provider_type="ollama", api_endpoint=api_endpoint, model=model_name)
+        print(f"[DEBUG] Created Ollama client with endpoint {api_endpoint}")
+    else:
+        print(f"[DEBUG] Using default client (provider: {default_client.provider_type})")
     
     for block_idx, block in enumerate(subtitle_blocks):
         if check_interruption_callback and check_interruption_callback():

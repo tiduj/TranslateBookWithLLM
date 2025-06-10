@@ -21,8 +21,21 @@
             <div class="card-body">
                 <div class="config-grid">
                     <div class="form-group">
+                        <label>LLM Provider</label>
+                        <select class="form-control" id="llmProvider" onchange="toggleProviderSettings()">
+                            <option value="ollama">Ollama (Local)</option>
+                            <option value="gemini">Google Gemini</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group" id="ollamaSettings">
                         <label>Ollama API Endpoint</label>
                         <input type="text" class="form-control" id="apiEndpoint" value="http://localhost:11434/api/generate">
+                    </div>
+
+                    <div class="form-group" id="geminiSettings" style="display: none;">
+                        <label>Gemini API Key</label>
+                        <input type="password" class="form-control" id="geminiApiKey" placeholder="Enter your Gemini API key">
                     </div>
 
                     <div class="form-group">

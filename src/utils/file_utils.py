@@ -15,7 +15,8 @@ async def translate_text_file_with_callbacks(input_filepath, output_filepath,
                                              model_name=DEFAULT_MODEL, chunk_target_lines_cli=MAIN_LINES_PER_CHUNK,
                                              cli_api_endpoint=API_ENDPOINT,
                                              progress_callback=None, log_callback=None, stats_callback=None,
-                                             check_interruption_callback=None, custom_instructions=""):
+                                             check_interruption_callback=None, custom_instructions="",
+                                             llm_provider="ollama", gemini_api_key=None):
     """
     Translate a text file with callback support
     
@@ -101,7 +102,9 @@ async def translate_text_file_with_callbacks(input_filepath, output_filepath,
         log_callback=log_callback,
         stats_callback=stats_callback,
         check_interruption_callback=check_interruption_callback,
-        custom_instructions=custom_instructions
+        custom_instructions=custom_instructions,
+        llm_provider=llm_provider,
+        gemini_api_key=gemini_api_key
     )
 
     if progress_callback: 
@@ -127,7 +130,8 @@ async def translate_srt_file_with_callbacks(input_filepath, output_filepath,
                                            model_name=DEFAULT_MODEL, chunk_target_lines_cli=MAIN_LINES_PER_CHUNK,
                                            cli_api_endpoint=API_ENDPOINT,
                                            progress_callback=None, log_callback=None, stats_callback=None,
-                                           check_interruption_callback=None, custom_instructions=""):
+                                           check_interruption_callback=None, custom_instructions="",
+                                           llm_provider="ollama", gemini_api_key=None):
     """
     Translate an SRT subtitle file with callback support
     
@@ -227,7 +231,9 @@ async def translate_srt_file_with_callbacks(input_filepath, output_filepath,
         log_callback=log_callback,
         stats_callback=stats_callback,
         check_interruption_callback=check_interruption_callback,
-        custom_instructions=custom_instructions
+        custom_instructions=custom_instructions,
+        llm_provider=llm_provider,
+        gemini_api_key=gemini_api_key
     )
     
     # Update subtitles with translations
@@ -264,7 +270,8 @@ async def translate_file(input_filepath, output_filepath,
                         model_name=DEFAULT_MODEL, chunk_target_size_cli=MAIN_LINES_PER_CHUNK,
                         cli_api_endpoint=API_ENDPOINT,
                         progress_callback=None, log_callback=None, stats_callback=None,
-                        check_interruption_callback=None, custom_instructions=""):
+                        check_interruption_callback=None, custom_instructions="",
+                        llm_provider="ollama", gemini_api_key=None):
     """
     Translate a file (auto-detect format)
     
@@ -290,7 +297,9 @@ async def translate_file(input_filepath, output_filepath,
                                   cli_api_endpoint,
                                   progress_callback, log_callback, stats_callback,
                                   check_interruption_callback=check_interruption_callback,
-                                  custom_instructions=custom_instructions)
+                                  custom_instructions=custom_instructions,
+                                  llm_provider=llm_provider,
+                                  gemini_api_key=gemini_api_key)
     elif ext == '.srt':
         await translate_srt_file_with_callbacks(
             input_filepath, output_filepath,
@@ -299,7 +308,9 @@ async def translate_file(input_filepath, output_filepath,
             cli_api_endpoint,
             progress_callback, log_callback, stats_callback,
             check_interruption_callback=check_interruption_callback,
-            custom_instructions=custom_instructions
+            custom_instructions=custom_instructions,
+            llm_provider=llm_provider,
+            gemini_api_key=gemini_api_key
         )
     else:
         await translate_text_file_with_callbacks(
@@ -309,5 +320,7 @@ async def translate_file(input_filepath, output_filepath,
             cli_api_endpoint,
             progress_callback, log_callback, stats_callback,
             check_interruption_callback=check_interruption_callback,
-            custom_instructions=custom_instructions
+            custom_instructions=custom_instructions,
+            llm_provider=llm_provider,
+            gemini_api_key=gemini_api_key
         )

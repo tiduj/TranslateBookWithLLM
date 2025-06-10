@@ -151,7 +151,39 @@ window.addEventListener('load', async () => {
     }
 });
 
+function toggleProviderSettings() {
+    const provider = document.getElementById('llmProvider').value;
+    const ollamaSettings = document.getElementById('ollamaSettings');
+    const geminiSettings = document.getElementById('geminiSettings');
+    const modelSelect = document.getElementById('model');
+    
+    if (provider === 'ollama') {
+        ollamaSettings.style.display = 'block';
+        geminiSettings.style.display = 'none';
+        loadAvailableModels();
+    } else if (provider === 'gemini') {
+        ollamaSettings.style.display = 'none';
+        geminiSettings.style.display = 'block';
+        // Set Gemini models
+        modelSelect.innerHTML = '';
+        const geminiModels = ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'];
+        geminiModels.forEach(modelName => {
+            const option = document.createElement('option');
+            option.value = modelName;
+            option.textContent = modelName;
+            if (modelName === 'gemini-2.0-flash') option.selected = true;
+            modelSelect.appendChild(option);
+        });
+        addLog('✅ Gemini models loaded');
+    }
+}
+
 async function loadAvailableModels() {
+    const provider = document.getElementById('llmProvider').value;
+    if (provider === 'gemini') {
+        return; // Gemini models are hardcoded
+    }
+    
     const modelSelect = document.getElementById('model');
     modelSelect.innerHTML = '<option value="">Loading models...</option>';
     try {
@@ -451,11 +483,28 @@ async function processNextFileInQueue() {
     let targetLanguageVal = document.getElementById('targetLang').value;
     if (targetLanguageVal === 'Other') targetLanguageVal = document.getElementById('customTargetLang').value.trim();
 
+    const provider = document.getElementById('llmProvider').value;
+    
+    // Validate Gemini API key if using Gemini
+    if (provider === 'gemini') {
+        const geminiApiKey = document.getElementById('geminiApiKey').value.trim();
+        if (!geminiApiKey) {
+            addLog('❌ Error: Gemini API key is required when using Gemini provider');
+            showMessage('Please enter your Gemini API key', 'error');
+            updateFileStatusInList(fileToTranslate.name, 'Error: Missing API key');
+            currentProcessingJob = null;
+            processNextFileInQueue();
+            return;
+        }
+    }
+    
     const config = {
         source_language: sourceLanguageVal,
         target_language: targetLanguageVal,
         model: document.getElementById('model').value,
-        api_endpoint: document.getElementById('apiEndpoint').value,
+        llm_api_endpoint: document.getElementById('apiEndpoint').value,
+        llm_provider: provider,
+        gemini_api_key: provider === 'gemini' ? document.getElementById('geminiApiKey').value : '',
         chunk_size: parseInt(document.getElementById('chunkSize').value),
         timeout: parseInt(document.getElementById('timeout').value),
         context_window: parseInt(document.getElementById('contextWindow').value),

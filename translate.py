@@ -5,7 +5,7 @@ import os
 import argparse
 import asyncio
 
-from src.config import DEFAULT_MODEL, MAIN_LINES_PER_CHUNK, API_ENDPOINT
+from src.config import DEFAULT_MODEL, MAIN_LINES_PER_CHUNK, API_ENDPOINT, LLM_PROVIDER, GEMINI_API_KEY
 from src.utils.file_utils import translate_file
 from src.utils.unified_logger import setup_cli_logger, LogType
 
@@ -19,6 +19,8 @@ if __name__ == "__main__":
     parser.add_argument("-m", "--model", default=DEFAULT_MODEL, help=f"LLM model (default: {DEFAULT_MODEL}).")
     parser.add_argument("-cs", "--chunksize", type=int, default=MAIN_LINES_PER_CHUNK, help=f"Target lines per chunk (default: {MAIN_LINES_PER_CHUNK}).")
     parser.add_argument("--api_endpoint", default=API_ENDPOINT, help=f"Ollama API endpoint (default: {API_ENDPOINT}).")
+    parser.add_argument("--provider", default=LLM_PROVIDER, choices=["ollama", "gemini"], help=f"LLM provider to use (default: {LLM_PROVIDER}).")
+    parser.add_argument("--gemini_api_key", default=GEMINI_API_KEY, help="Google Gemini API key (required if using gemini provider).")
     parser.add_argument("--custom_instructions", default="", help="Additional custom instructions for translation.")
     parser.add_argument("--no-color", action="store_true", help="Disable colored output.")
 
@@ -44,6 +46,10 @@ if __name__ == "__main__":
     # Setup unified logger
     logger = setup_cli_logger(enable_colors=not args.no_color)
     
+    # Validate Gemini API key if using Gemini provider
+    if args.provider == "gemini" and not args.gemini_api_key:
+        parser.error("--gemini_api_key is required when using gemini provider")
+    
     # Log translation start
     logger.info("Translation Started", LogType.TRANSLATION_START, {
         'source_lang': args.source_lang,
@@ -54,6 +60,7 @@ if __name__ == "__main__":
         'output_file': args.output,
         'chunk_size': args.chunksize,
         'api_endpoint': args.api_endpoint,
+        'llm_provider': args.provider,
         'custom_instructions': args.custom_instructions
     })
     
@@ -73,7 +80,9 @@ if __name__ == "__main__":
             log_callback=log_callback,
             stats_callback=None,
             check_interruption_callback=None,
-            custom_instructions=args.custom_instructions
+            custom_instructions=args.custom_instructions,
+            llm_provider=args.provider,
+            gemini_api_key=args.gemini_api_key
         ))
         
         # Log successful completion

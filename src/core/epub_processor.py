@@ -222,7 +222,8 @@ async def translate_epub_file(input_filepath, output_filepath,
                               model_name=DEFAULT_MODEL, chunk_target_lines_arg=MAIN_LINES_PER_CHUNK,
                               cli_api_endpoint=API_ENDPOINT,
                               progress_callback=None, log_callback=None, stats_callback=None,
-                              check_interruption_callback=None, custom_instructions=""):
+                              check_interruption_callback=None, custom_instructions="",
+                              llm_provider="ollama", gemini_api_key=None):
     """
     Translate an EPUB file
     
@@ -353,8 +354,10 @@ async def translate_epub_file(input_filepath, output_filepath,
             # Create LLM client if custom endpoint is provided
             from .llm_client import LLMClient, default_client
             llm_client = None
-            if cli_api_endpoint and cli_api_endpoint != default_client.api_endpoint:
-                llm_client = LLMClient(api_endpoint=cli_api_endpoint, model=model_name)
+            if llm_provider == "gemini" and gemini_api_key:
+                llm_client = LLMClient(provider_type="gemini", api_key=gemini_api_key, model=model_name)
+            elif cli_api_endpoint and cli_api_endpoint != default_client.api_endpoint:
+                llm_client = LLMClient(provider_type="ollama", api_endpoint=cli_api_endpoint, model=model_name)
 
             last_successful_llm_context = ""
             completed_jobs_count = 0

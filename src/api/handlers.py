@@ -185,7 +185,9 @@ async def perform_actual_translation(translation_id, config, active_translations
                 log_callback=_log_message_callback,
                 stats_callback=_update_translation_stats_callback,
                 check_interruption_callback=should_interrupt_current_task,
-                custom_instructions=config.get('custom_instructions', '')
+                custom_instructions=config.get('custom_instructions', ''),
+                llm_provider=config.get('llm_provider', 'ollama'),
+                gemini_api_key=config.get('gemini_api_key', '')
             )
 
             if os.path.exists(output_filepath_on_server) and active_translations[translation_id].get('status') not in ['error', 'interrupted_before_save']:
