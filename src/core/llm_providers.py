@@ -67,7 +67,7 @@ class OllamaProvider(LLMProvider):
         async with httpx.AsyncClient() as client:
             for attempt in range(MAX_TRANSLATION_ATTEMPTS):
                 try:
-                    print(f"Ollama API Request to {self.api_endpoint} with model {self.model}")
+                    # print(f"Ollama API Request to {self.api_endpoint} with model {self.model}")
                     response = await client.post(
                         self.api_endpoint, 
                         json=payload, 
@@ -77,7 +77,7 @@ class OllamaProvider(LLMProvider):
                     
                     response_json = response.json()
                     response_text = response_json.get("response", "")
-                    print(f"Ollama API Response received: {len(response_text)} characters")
+                    # print(f"Ollama API Response received: {len(response_text)} characters")
                     return response_text
                     
                 except httpx.TimeoutException as e:
@@ -131,15 +131,14 @@ class GeminiProvider(LLMProvider):
             }
         }
         
-        print(f"[DEBUG] Gemini API URL: {self.api_endpoint}")
-        print(f"[DEBUG] Using API key: {self.api_key[:10]}...{self.api_key[-4:]}")
-        print(f"[DEBUG] Headers: {headers}")
-        print(f"[DEBUG] Payload length: {len(str(payload))} characters")
+        # Debug logs removed - uncomment if needed for troubleshooting
+        # print(f"[DEBUG] Gemini API URL: {self.api_endpoint}")
+        # print(f"[DEBUG] Using API key: {self.api_key[:10]}...{self.api_key[-4:]}")
         
         async with httpx.AsyncClient() as client:
             for attempt in range(MAX_TRANSLATION_ATTEMPTS):
                 try:
-                    print(f"Gemini API Request to {self.api_endpoint}")
+                    # print(f"Gemini API Request to {self.api_endpoint}")
                     response = await client.post(
                         self.api_endpoint,
                         headers=headers,
@@ -157,7 +156,7 @@ class GeminiProvider(LLMProvider):
                         if parts:
                             response_text = parts[0].get("text", "")
                     
-                    print(f"Gemini API Response received: {len(response_text)} characters")
+                    # print(f"Gemini API Response received: {len(response_text)} characters")
                     return response_text
                     
                 except httpx.TimeoutException as e:
@@ -167,12 +166,8 @@ class GeminiProvider(LLMProvider):
                     return None
                 except httpx.HTTPStatusError as e:
                     print(f"Gemini API HTTP Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
-                    if hasattr(e, 'response'):
-                        print(f"Status Code: {e.response.status_code}")
-                        print(f"Response Headers: {e.response.headers}")
-                        print(f"Response Body: {e.response.text}")
-                    else:
-                        print("No response object available")
+                    if hasattr(e, 'response') and hasattr(e.response, 'text'):
+                        print(f"Response details: Status {e.response.status_code}, Body: {e.response.text[:200]}...")
                     if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
                         continue
                     return None
@@ -195,7 +190,8 @@ def create_llm_provider(provider_type: str = "ollama", **kwargs) -> LLMProvider:
     # Auto-detect provider from model name if not explicitly set
     model = kwargs.get("model", DEFAULT_MODEL)
     if provider_type == "ollama" and model and model.startswith("gemini"):
-        print(f"[WARNING] Detected Gemini model '{model}' but provider is set to 'ollama'. Switching to 'gemini' provider.")
+        # Auto-switch to Gemini provider when Gemini model is detected
+        # print(f"[INFO] Auto-switching to Gemini provider for model '{model}'")
         provider_type = "gemini"
     
     if provider_type.lower() == "ollama":

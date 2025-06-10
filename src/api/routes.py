@@ -91,7 +91,8 @@ def configure_routes(app, active_translations, output_dir, start_translation_job
     @app.route('/api/translate', methods=['POST'])
     def start_translation_request():
         data = request.json
-        print(f"[DEBUG] Received translation request: {data}")
+        # Uncomment for debugging
+        # print(f"[DEBUG] Received translation request: {data}")
 
         if 'file_path' in data:
             required_fields = ['file_path', 'source_language', 'target_language', 'model', 'llm_api_endpoint', 'output_filename', 'file_type']
@@ -103,7 +104,7 @@ def configure_routes(app, active_translations, output_dir, start_translation_job
                 if field == 'text' and data.get('file_type') == 'txt' and data.get('text') == "":
                     pass
                 else:
-                    print(f"[DEBUG] Missing or empty field: {field}")
+                    # print(f"[DEBUG] Missing or empty field: {field}")
                     return jsonify({"error": f"Missing or empty field: {field}"}), 400
 
         translation_id = f"trans_{int(time.time() * 1000)}"

@@ -158,7 +158,9 @@ async def perform_actual_translation(translation_id, config, active_translations
                 log_callback=_log_message_callback,
                 stats_callback=_update_translation_stats_callback,
                 check_interruption_callback=should_interrupt_current_task,
-                custom_instructions=config.get('custom_instructions', '')
+                custom_instructions=config.get('custom_instructions', ''),
+                llm_provider=config.get('llm_provider', 'ollama'),
+                gemini_api_key=config.get('gemini_api_key', '')
             )
             active_translations[translation_id]['result'] = "[EPUB file translated - download to view]"
             
@@ -214,7 +216,9 @@ async def perform_actual_translation(translation_id, config, active_translations
                 log_callback=_log_message_callback,
                 stats_callback=_update_translation_stats_callback,
                 check_interruption_callback=should_interrupt_current_task,
-                custom_instructions=config.get('custom_instructions', '')
+                custom_instructions=config.get('custom_instructions', ''),
+                llm_provider=config.get('llm_provider', 'ollama'),
+                gemini_api_key=config.get('gemini_api_key', '')
             )
             
             active_translations[translation_id]['result'] = "[SRT file translated - download to view]"
