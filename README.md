@@ -6,11 +6,9 @@
 
 ## Features
 
-- 📚 **Multiple Format Support**: Translate both plain text (.txt) EPUB and SRT (Subtitle) files while preserving formatting
-- 🌐 **Web Interface**: User-friendly browser-based interface with real-time progress tracking via WebSocket
+- 📚 **Multiple Format Support**: Translate plain text (.txt), book (.EPUB) and Subtitle (.SRT) files while preserving formatting
+- 🌐 **Web Interface**: User-friendly browser-based interface
 - 💻 **CLI Support**: Command-line interface for automation and scripting
-- 🎯 **Context Management**: Intelligent text chunking that preserves sentence boundaries and maintains context
-- 🔒 **Secure File Handling**: Built-in security features for file uploads and processing
 - 🤖 **Multiple LLM Providers**: Support for both local Ollama models and Google Gemini API
 
 ## Windows Installation Guide
@@ -52,7 +50,7 @@ This comprehensive guide walks you through setting up the complete environment o
     # Activate environment (do this every time)
     conda activate translate_book_env
     ```
-
+    
 -----
 
 ### 3\. Getting the Translation Application
@@ -80,9 +78,6 @@ pip install flask flask-cors flask-socketio python-socketio requests tqdm httpx 
 
 # Or install minimal dependencies for CLI only
 pip install requests tqdm python-dotenv
-
-# For EPUB support, also install:
-pip install lxml
 ```
 
 -----
@@ -175,11 +170,8 @@ python translate.py -i book.txt -o book_fr.txt --provider gemini --gemini_api_ke
 ### EPUB File Support
 
 The application fully supports EPUB files:
-- **Preserves Structure**: Maintains the original EPUB structure and formatting
-- **XML Processing**: Namespace-aware XML parsing for proper content handling
+- **Preserves Structure**: Maintains must of the original EPUB structure and formatting
 - **Selective Translation**: Only translates content blocks (paragraphs, headings, etc.)
-- **Metadata Update**: Automatically updates language metadata in the EPUB
-- **Error Recovery**: Falls back to original content if translation fails
 
 ### Google Gemini Support
 
@@ -242,31 +234,6 @@ MAIN_LINES_PER_CHUNK=25
 # ... see .env.example for all available settings
 ```
 
-#### src/config.py - Main Settings
-```python
-# Configuration loads from environment variables (via .env file)
-# with fallback to defaults:
-
-# API and Model Configuration
-API_ENDPOINT = os.getenv('API_ENDPOINT', 'http://localhost:11434/api/generate')
-DEFAULT_MODEL = os.getenv('DEFAULT_MODEL', 'mistral-small:24b')
-
-# Processing Parameters
-MAIN_LINES_PER_CHUNK = int(os.getenv('MAIN_LINES_PER_CHUNK', '25'))
-REQUEST_TIMEOUT = int(os.getenv('REQUEST_TIMEOUT', '60'))
-OLLAMA_NUM_CTX = int(os.getenv('OLLAMA_NUM_CTX', '2048'))
-MAX_TRANSLATION_ATTEMPTS = int(os.getenv('MAX_TRANSLATION_ATTEMPTS', '2'))
-RETRY_DELAY_SECONDS = int(os.getenv('RETRY_DELAY_SECONDS', '2'))
-
-# Translation Tags (hardcoded)
-TRANSLATE_TAG_IN = "<TRANSLATED>"
-TRANSLATE_TAG_OUT = "</TRANSLATED>"
-
-# EPUB Processing (hardcoded)
-NAMESPACES = {...}                # XML namespace mappings
-CONTENT_BLOCK_TAGS_EPUB = [...]   # Tags to translate
-```
-
 #### prompts.py - Translation Prompts
 
 The translation quality depends heavily on the prompt. The prompts are now managed in `prompts.py`:
@@ -293,32 +260,6 @@ structured_prompt = f"""
 
 **Note:** The translation tags are defined in `config.py` and automatically used by the prompt generator.
 
------
-
-## Tips for Better Translations
-
-### Model Selection
-
-  - **mistral-small:24b**: Excellent for French, good general performance
-  - **qwen2:7b**: Fast, good for multiple languages
-  - **llama3:8b**: Balanced performance and speed
-
-### Optimal Settings
-
-  - **Chunk Size**:
-      - Small (10-20): Faster but may lose context
-      - Large (40-60): Better context but slower, may hit limits
-  - **Context Window**: Match your model's capabilities
-  - **EPUB Files**:
-      - The script preserves the structure of the EPUB file. The original quality of the structure is important, because if line breaks are present in the middle of a sentence, it will be cut off in the translation chunk, causing translation errors. If the quality is too poor, it is better to convert the EPUB file to .txt using Calibre, and then translate it into a .txt file.
-      - The chunk size applies to lines within HTML content blocks, chunk are mostly shorter than in .txt files.
-
-### Content Preparation
-- Clean your input text (remove artifacts, fix major typos)
-- Use plain text (.txt) or EPUB (.epub) format
-- Consider splitting very large text files (>1MB) into sections
-- EPUB files are processed automatically without size limitations
------
 
 ## Troubleshooting
 
