@@ -112,6 +112,51 @@ class GeminiProvider(LLMProvider):
         self.api_key = api_key
         self.api_endpoint = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
     
+    async def get_available_models(self) -> list[dict]:
+        """Fetch available Gemini models from API, excluding thinking models"""
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": self.api_key
+        }
+        
+        models_endpoint = "https://generativelanguage.googleapis.com/v1beta/models"
+        
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.get(
+                    models_endpoint,
+                    headers=headers,
+                    timeout=10
+                )
+                response.raise_for_status()
+                
+                data = response.json()
+                models = []
+                
+                for model in data.get("models", []):
+                    model_name = model.get("name", "").replace("models/", "")
+                    
+                    # Skip thinking models
+                    if "thinking" in model_name.lower():
+                        continue
+                    
+                    # Only include models that support generateContent
+                    supported_methods = model.get("supportedGenerationMethods", [])
+                    if "generateContent" in supported_methods:
+                        models.append({
+                            "name": model_name,
+                            "displayName": model.get("displayName", model_name),
+                            "description": model.get("description", ""),
+                            "inputTokenLimit": model.get("inputTokenLimit", 0),
+                            "outputTokenLimit": model.get("outputTokenLimit", 0)
+                        })
+                
+                return models
+                
+            except Exception as e:
+                print(f"Error fetching Gemini models: {e}")
+                return []
+    
     async def generate(self, prompt: str, timeout: int = REQUEST_TIMEOUT) -> Optional[str]:
         """Generate text using Gemini API"""
         headers = {

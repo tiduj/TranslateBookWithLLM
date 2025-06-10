@@ -171,27 +171,60 @@ function toggleProviderSettings() {
     } else if (provider === 'gemini') {
         ollamaSettings.style.display = 'none';
         geminiSettings.style.display = 'block';
-        // Set Gemini models
-        modelSelect.innerHTML = '';
-        const geminiModels = ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-1.0-pro'];
-        geminiModels.forEach(modelName => {
-            const option = document.createElement('option');
-            option.value = modelName;
-            option.textContent = modelName;
-            if (modelName === 'gemini-2.0-flash') option.selected = true;
-            modelSelect.appendChild(option);
-        });
-        addLog('✅ Gemini models loaded');
+        loadGeminiModels();
     }
 }
 
 // Track the current request to prevent race conditions
 let currentModelLoadRequest = null;
 
+async function loadGeminiModels() {
+    const modelSelect = document.getElementById('model');
+    modelSelect.innerHTML = '<option value="">Loading Gemini models...</option>';
+    
+    try {
+        const apiKey = document.getElementById('geminiApiKey').value.trim();
+        const response = await fetch(`${API_BASE_URL}/api/models?provider=gemini&api_key=${encodeURIComponent(apiKey)}`);
+        
+        if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.error || `HTTP error ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        modelSelect.innerHTML = '';
+        
+        if (data.models && data.models.length > 0) {
+            showMessage('', '');
+            
+            data.models.forEach(model => {
+                const option = document.createElement('option');
+                option.value = model.name;
+                option.textContent = `${model.displayName || model.name} - ${model.description || ''}`;
+                option.title = `Input: ${model.inputTokenLimit || 'N/A'} tokens, Output: ${model.outputTokenLimit || 'N/A'} tokens`;
+                if (model.name === data.default) option.selected = true;
+                modelSelect.appendChild(option);
+            });
+            
+            addLog(`✅ ${data.count} Gemini model(s) loaded (excluding thinking models)`);
+        } else {
+            const errorMessage = data.error || 'No Gemini models available.';
+            showMessage(`⚠️ ${errorMessage}`, 'error');
+            modelSelect.innerHTML = '<option value="">No models available</option>';
+            addLog(`⚠️ No Gemini models available`);
+        }
+    } catch (error) {
+        showMessage(`❌ Error fetching Gemini models: ${error.message}`, 'error');
+        addLog(`❌ Failed to retrieve Gemini model list: ${error.message}`);
+        modelSelect.innerHTML = '<option value="">Error loading models</option>';
+    }
+}
+
 async function loadAvailableModels() {
     const provider = document.getElementById('llmProvider').value;
     if (provider === 'gemini') {
-        return; // Gemini models are hardcoded
+        return; // Gemini models are loaded separately
     }
     
     // Cancel any pending request
@@ -221,7 +254,10 @@ async function loadAvailableModels() {
         }
         const data = await response.json();
         
-        // Double-check the provider hasn't changed
+        // Double-check the provider hasn't changed and request wasn't cancelled
+        if (thisRequest.cancelled) {
+            return;
+        }
         const currentProvider = document.getElementById('llmProvider').value;
         if (currentProvider !== 'ollama') {
             console.log('Provider changed during model load, ignoring Ollama response');
