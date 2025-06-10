@@ -123,6 +123,9 @@ function handleTranslationUpdate(data) {
 }
 
 window.addEventListener('load', async () => {
+    // Set up event listener for provider change
+    document.getElementById('llmProvider').addEventListener('change', toggleProviderSettings);
+    
     try {
         const response = await fetch(`${API_BASE_URL}/api/health`);
         if (!response.ok) throw new Error('Server health check failed');
@@ -133,7 +136,9 @@ window.addEventListener('load', async () => {
             addLog(`Supported file formats: ${healthData.supported_formats.join(', ')}`);
         }
         
-        loadAvailableModels();
+        // Initialize provider settings first
+        toggleProviderSettings();
+        
         const configResponse = await fetch(`${API_BASE_URL}/api/config`);
         if (configResponse.ok) {
             const defaultConfig = await configResponse.json();
@@ -151,17 +156,78 @@ window.addEventListener('load', async () => {
     }
 });
 
+function toggleProviderSettings() {
+    const provider = document.getElementById('llmProvider').value;
+    const ollamaSettings = document.getElementById('ollamaSettings');
+    const geminiSettings = document.getElementById('geminiSettings');
+    const modelSelect = document.getElementById('model');
+    
+    // console.log(`[DEBUG] toggleProviderSettings called with provider: ${provider}`);
+    
+    if (provider === 'ollama') {
+        ollamaSettings.style.display = 'block';
+        geminiSettings.style.display = 'none';
+        loadAvailableModels();
+    } else if (provider === 'gemini') {
+        ollamaSettings.style.display = 'none';
+        geminiSettings.style.display = 'block';
+        // Set Gemini models
+        modelSelect.innerHTML = '';
+        const geminiModels = ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-1.0-pro'];
+        geminiModels.forEach(modelName => {
+            const option = document.createElement('option');
+            option.value = modelName;
+            option.textContent = modelName;
+            if (modelName === 'gemini-2.0-flash') option.selected = true;
+            modelSelect.appendChild(option);
+        });
+        addLog('✅ Gemini models loaded');
+    }
+}
+
+// Track the current request to prevent race conditions
+let currentModelLoadRequest = null;
+
 async function loadAvailableModels() {
+    const provider = document.getElementById('llmProvider').value;
+    if (provider === 'gemini') {
+        return; // Gemini models are hardcoded
+    }
+    
+    // Cancel any pending request
+    if (currentModelLoadRequest) {
+        currentModelLoadRequest.cancelled = true;
+    }
+    
+    // Create a new request tracker
+    const thisRequest = { cancelled: false };
+    currentModelLoadRequest = thisRequest;
+    
     const modelSelect = document.getElementById('model');
     modelSelect.innerHTML = '<option value="">Loading models...</option>';
     try {
         const currentApiEp = document.getElementById('apiEndpoint').value;
         const response = await fetch(`${API_BASE_URL}/api/models?api_endpoint=${encodeURIComponent(currentApiEp)}`);
+        
+        // Check if this request was cancelled while in flight
+        if (thisRequest.cancelled) {
+            console.log('Model load request was cancelled');
+            return;
+        }
+        
         if (!response.ok) {
             const errData = await response.json();
             throw new Error(errData.error || `HTTP error ${response.status}`);
         }
         const data = await response.json();
+        
+        // Double-check the provider hasn't changed
+        const currentProvider = document.getElementById('llmProvider').value;
+        if (currentProvider !== 'ollama') {
+            console.log('Provider changed during model load, ignoring Ollama response');
+            return;
+        }
+        
         modelSelect.innerHTML = '';
 
         if (data.models && data.models.length > 0) {
@@ -182,9 +248,17 @@ async function loadAvailableModels() {
             addLog(`⚠️ No models available from Ollama at ${currentApiEp}`);
         }
     } catch (error) {
-        showMessage(`❌ Error fetching models: ${error.message}`, 'error');
-        addLog(`❌ Failed to retrieve model list: ${error.message}`);
-        modelSelect.innerHTML = '<option value="">Error loading models - Check Ollama</option>';
+        // Check if cancelled
+        if (!thisRequest.cancelled) {
+            showMessage(`❌ Error fetching models: ${error.message}`, 'error');
+            addLog(`❌ Failed to retrieve model list: ${error.message}`);
+            modelSelect.innerHTML = '<option value="">Error loading models - Check Ollama</option>';
+        }
+    } finally {
+        // Clear the request tracker if it's still ours
+        if (currentModelLoadRequest === thisRequest) {
+            currentModelLoadRequest = null;
+        }
     }
 }
 
@@ -451,11 +525,28 @@ async function processNextFileInQueue() {
     let targetLanguageVal = document.getElementById('targetLang').value;
     if (targetLanguageVal === 'Other') targetLanguageVal = document.getElementById('customTargetLang').value.trim();
 
+    const provider = document.getElementById('llmProvider').value;
+    
+    // Validate Gemini API key if using Gemini
+    if (provider === 'gemini') {
+        const geminiApiKey = document.getElementById('geminiApiKey').value.trim();
+        if (!geminiApiKey) {
+            addLog('❌ Error: Gemini API key is required when using Gemini provider');
+            showMessage('Please enter your Gemini API key', 'error');
+            updateFileStatusInList(fileToTranslate.name, 'Error: Missing API key');
+            currentProcessingJob = null;
+            processNextFileInQueue();
+            return;
+        }
+    }
+    
     const config = {
         source_language: sourceLanguageVal,
         target_language: targetLanguageVal,
         model: document.getElementById('model').value,
-        api_endpoint: document.getElementById('apiEndpoint').value,
+        llm_api_endpoint: document.getElementById('apiEndpoint').value,
+        llm_provider: provider,
+        gemini_api_key: provider === 'gemini' ? document.getElementById('geminiApiKey').value : '',
         chunk_size: parseInt(document.getElementById('chunkSize').value),
         timeout: parseInt(document.getElementById('timeout').value),
         context_window: parseInt(document.getElementById('contextWindow').value),

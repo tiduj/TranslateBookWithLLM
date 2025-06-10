@@ -9,6 +9,7 @@
 - 📚 **Multiple Format Support**: Translate plain text (.txt), book (.EPUB) and Subtitle (.SRT) files while preserving formatting
 - 🌐 **Web Interface**: User-friendly browser-based interface
 - 💻 **CLI Support**: Command-line interface for automation and scripting
+- 🤖 **Multiple LLM Providers**: Support for both local Ollama models and Google Gemini API
 
 ## Windows Installation Guide
 
@@ -144,6 +145,8 @@ python translate.py -i input.txt -o output.txt
   - `-m, --model`: LLM model to use (default: "mistral-small:24b").
   - `-cs, --chunksize`: Target lines per chunk for text files (default: 25).
   - `--api_endpoint`: Ollama API endpoint (default: "http://localhost:11434/api/generate").
+  - `--provider`: LLM provider to use ("ollama" or "gemini", default: "ollama").
+  - `--gemini_api_key`: Google Gemini API key (required when using gemini provider).
 
 **Examples:**
 
@@ -159,6 +162,9 @@ python translate.py -i story.txt -o story_de.txt -sl English -tl German -m qwen2
 
 # Custom chunk size for better context with a text file
 python translate.py -i novel.txt -o novel_fr.txt -cs 40
+
+# Using Google Gemini instead of Ollama
+python translate.py -i book.txt -o book_fr.txt --provider gemini --gemini_api_key YOUR_API_KEY -m gemini-2.0-flash
 ```
 
 ### EPUB File Support
@@ -166,6 +172,35 @@ python translate.py -i novel.txt -o novel_fr.txt -cs 40
 The application fully supports EPUB files:
 - **Preserves Structure**: Maintains must of the original EPUB structure and formatting
 - **Selective Translation**: Only translates content blocks (paragraphs, headings, etc.)
+
+### Google Gemini Support
+
+In addition to local Ollama models, the application now supports Google Gemini API:
+
+**Setup:**
+1. Get your API key from [Google AI Studio](https://makersuite.google.com/app/apikey)
+2. Use the `--provider gemini` flag with your API key
+
+**Available Gemini Models:**
+- `gemini-2.0-flash` (default, fast and efficient)
+- `gemini-1.5-pro` (more capable, slower)
+- `gemini-1.5-flash` (balanced performance)
+
+**Web Interface:**
+- Select "Google Gemini" from the LLM Provider dropdown
+- Enter your API key in the secure field
+- Choose your preferred Gemini model
+
+**CLI Example:**
+```bash
+python translate.py -i book.txt -o book_translated.txt \
+    --provider gemini \
+    --gemini_api_key YOUR_API_KEY \
+    -m gemini-2.0-flash \
+    -sl English -tl Spanish
+```
+
+**Note:** Gemini API requires an internet connection and has usage quotas. Check [Google's pricing](https://ai.google.dev/pricing) for details.
 
 ---
 

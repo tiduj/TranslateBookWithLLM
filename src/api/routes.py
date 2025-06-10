@@ -91,17 +91,20 @@ def configure_routes(app, active_translations, output_dir, start_translation_job
     @app.route('/api/translate', methods=['POST'])
     def start_translation_request():
         data = request.json
+        # Uncomment for debugging
+        # print(f"[DEBUG] Received translation request: {data}")
 
         if 'file_path' in data:
-            required_fields = ['file_path', 'source_language', 'target_language', 'model', 'api_endpoint', 'output_filename', 'file_type']
+            required_fields = ['file_path', 'source_language', 'target_language', 'model', 'llm_api_endpoint', 'output_filename', 'file_type']
         else:
-            required_fields = ['text', 'source_language', 'target_language', 'model', 'api_endpoint', 'output_filename']
+            required_fields = ['text', 'source_language', 'target_language', 'model', 'llm_api_endpoint', 'output_filename']
         
         for field in required_fields:
             if field not in data or (isinstance(data[field], str) and not data[field].strip()) or (not isinstance(data[field], str) and data[field] is None):
                 if field == 'text' and data.get('file_type') == 'txt' and data.get('text') == "":
                     pass
                 else:
+                    # print(f"[DEBUG] Missing or empty field: {field}")
                     return jsonify({"error": f"Missing or empty field: {field}"}), 400
 
         translation_id = f"trans_{int(time.time() * 1000)}"
@@ -111,13 +114,15 @@ def configure_routes(app, active_translations, output_dir, start_translation_job
             'target_language': data['target_language'],
             'model': data['model'],
             'chunk_size': int(data.get('chunk_size', MAIN_LINES_PER_CHUNK)),
-            'llm_api_endpoint': data['api_endpoint'],
+            'llm_api_endpoint': data['llm_api_endpoint'],
             'request_timeout': int(data.get('timeout', REQUEST_TIMEOUT)),
             'context_window': int(data.get('context_window', OLLAMA_NUM_CTX)),
             'max_attempts': int(data.get('max_attempts', 2)),
             'retry_delay': int(data.get('retry_delay', 2)),
             'output_filename': data['output_filename'],
-            'custom_instructions': data.get('custom_instructions', '')
+            'custom_instructions': data.get('custom_instructions', ''),
+            'llm_provider': data.get('llm_provider', 'ollama'),
+            'gemini_api_key': data.get('gemini_api_key', '')
         }
 
         if 'file_path' in data:
