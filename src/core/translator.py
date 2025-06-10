@@ -9,8 +9,29 @@ from src.config import (
     DEFAULT_MODEL, TRANSLATE_TAG_IN, TRANSLATE_TAG_OUT
 )
 from prompts import generate_translation_prompt, generate_subtitle_block_prompt
-from .llm_client import default_client
-from typing import List, Dict, Tuple
+from .llm_client import default_client, LLMClient
+from typing import List, Dict, Tuple, Optional
+
+
+def _create_llm_client(llm_provider: str, gemini_api_key: Optional[str], 
+                      api_endpoint: str, model_name: str) -> Optional[LLMClient]:
+    """
+    Create LLM client based on provider or custom endpoint
+    
+    Args:
+        llm_provider: Provider type ('ollama' or 'gemini')
+        gemini_api_key: API key for Gemini provider
+        api_endpoint: API endpoint for custom Ollama instance
+        model_name: Model name to use
+        
+    Returns:
+        LLMClient instance or None if using default client
+    """
+    if llm_provider == "gemini" and gemini_api_key:
+        return LLMClient(provider_type="gemini", api_key=gemini_api_key, model=model_name)
+    elif api_endpoint and api_endpoint != default_client.api_endpoint:
+        return LLMClient(provider_type="ollama", api_endpoint=api_endpoint, model=model_name)
+    return None
 
 
 async def generate_translation_request(main_content, context_before, context_after, previous_translation_context,
@@ -126,13 +147,7 @@ async def translate_chunks(chunks, source_language, target_language, model_name,
         log_callback("txt_translation_loop_start", "Starting segment translation...")
 
     # Create LLM client based on provider or custom endpoint
-    llm_client = None
-    if llm_provider == "gemini" and gemini_api_key:
-        from .llm_client import LLMClient
-        llm_client = LLMClient(provider_type="gemini", api_key=gemini_api_key, model=model_name)
-    elif api_endpoint and api_endpoint != default_client.api_endpoint:
-        from .llm_client import LLMClient
-        llm_client = LLMClient(provider_type="ollama", api_endpoint=api_endpoint, model=model_name)
+    llm_client = _create_llm_client(llm_provider, gemini_api_key, api_endpoint, model_name)
 
     iterator = tqdm(chunks, desc=f"Translating {source_language} to {target_language}", unit="seg") if not log_callback else chunks
 
@@ -227,13 +242,7 @@ async def translate_subtitles(subtitles: List[Dict[str, str]], source_language: 
         log_callback("srt_translation_start", f"Starting translation of {total_subtitles} subtitles...")
     
     # Create LLM client based on provider or custom endpoint
-    llm_client = None
-    if llm_provider == "gemini" and gemini_api_key:
-        from .llm_client import LLMClient
-        llm_client = LLMClient(provider_type="gemini", api_key=gemini_api_key, model=model_name)
-    elif api_endpoint and api_endpoint != default_client.api_endpoint:
-        from .llm_client import LLMClient
-        llm_client = LLMClient(provider_type="ollama", api_endpoint=api_endpoint, model=model_name)
+    llm_client = _create_llm_client(llm_provider, gemini_api_key, api_endpoint, model_name)
     
     iterator = tqdm(enumerate(subtitles), total=total_subtitles, 
                    desc=f"Translating subtitles ({source_language} to {target_language})", 
@@ -349,13 +358,7 @@ async def translate_subtitles_in_blocks(subtitle_blocks: List[List[Dict[str, str
                     f"Starting block translation: {total_subtitles} subtitles in {total_blocks} blocks...")
     
     # Create LLM client based on provider or custom endpoint
-    llm_client = None
-    if llm_provider == "gemini" and gemini_api_key:
-        from .llm_client import LLMClient
-        llm_client = LLMClient(provider_type="gemini", api_key=gemini_api_key, model=model_name)
-    elif api_endpoint and api_endpoint != default_client.api_endpoint:
-        from .llm_client import LLMClient
-        llm_client = LLMClient(provider_type="ollama", api_endpoint=api_endpoint, model=model_name)
+    llm_client = _create_llm_client(llm_provider, gemini_api_key, api_endpoint, model_name)
     
     for block_idx, block in enumerate(subtitle_blocks):
         if check_interruption_callback and check_interruption_callback():
