@@ -133,6 +133,10 @@ def configure_routes(app, active_translations, output_dir, start_translation_job
 
     @app.route('/api/config', methods=['GET'])
     def get_default_config():
+        # Get Gemini API key from environment
+        import os
+        gemini_api_key = os.getenv('GEMINI_API_KEY', '')
+        
         return jsonify({
             "api_endpoint": DEFAULT_OLLAMA_API_ENDPOINT,
             "default_model": DEFAULT_MODEL,
@@ -141,7 +145,8 @@ def configure_routes(app, active_translations, output_dir, start_translation_job
             "context_window": OLLAMA_NUM_CTX,
             "max_attempts": 2,
             "retry_delay": 2,
-            "supported_formats": ["txt", "epub", "srt"]
+            "supported_formats": ["txt", "epub", "srt"],
+            "gemini_api_key": gemini_api_key
         })
 
     @app.route('/api/translate', methods=['POST'])
@@ -178,7 +183,7 @@ def configure_routes(app, active_translations, output_dir, start_translation_job
             'output_filename': data['output_filename'],
             'custom_instructions': data.get('custom_instructions', ''),
             'llm_provider': data.get('llm_provider', 'ollama'),
-            'gemini_api_key': data.get('gemini_api_key', '')
+            'gemini_api_key': data.get('gemini_api_key') or os.getenv('GEMINI_API_KEY', '')
         }
 
         if 'file_path' in data:

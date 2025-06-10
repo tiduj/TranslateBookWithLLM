@@ -149,6 +149,11 @@ window.addEventListener('load', async () => {
             document.getElementById('maxAttempts').value = defaultConfig.max_attempts || 2;
             document.getElementById('retryDelay').value = defaultConfig.retry_delay || 2;
             document.getElementById('outputFilenamePattern').value = "translated_{originalName}.{ext}";
+            
+            // Load Gemini API key from environment if available
+            if (defaultConfig.gemini_api_key) {
+                document.getElementById('geminiApiKey').value = defaultConfig.gemini_api_key;
+            }
         }
     } catch (error) {
         showMessage(`⚠️ Server unavailable at ${API_BASE_URL}. Ensure Python server is running. ${error.message}`, 'error');
