@@ -14,6 +14,72 @@ from src.config import (
 )
 from .text_processor import split_text_into_chunks_with_context
 from .translator import generate_translation_request
+import re
+import hashlib
+import json
+
+
+class TagPreserver:
+    """
+    Preserves HTML/XML tags during translation by replacing them with simple placeholders
+    """
+    def __init__(self):
+        self.tag_map = {}
+        self.counter = 0
+        self.placeholder_prefix = "⟦TAG"
+        self.placeholder_suffix = "⟧"
+    
+    def preserve_tags(self, text):
+        """
+        Replace HTML/XML tags with simple placeholders
+        
+        Args:
+            text: Text containing HTML/XML tags
+            
+        Returns:
+            tuple: (processed_text, tag_map)
+        """
+        # Reset for new text
+        self.tag_map = {}
+        self.counter = 0
+        
+        # Pattern to match any HTML/XML tag (opening, closing, or self-closing)
+        tag_pattern = r'<[^>]+>'
+        
+        def replace_tag(match):
+            tag = match.group(0)
+            # Create a simple placeholder
+            placeholder = f"{self.placeholder_prefix}{self.counter}{self.placeholder_suffix}"
+            self.tag_map[placeholder] = tag
+            self.counter += 1
+            return placeholder
+        
+        # Replace all tags with placeholders
+        processed_text = re.sub(tag_pattern, replace_tag, text)
+        
+        return processed_text, self.tag_map.copy()
+    
+    def restore_tags(self, text, tag_map):
+        """
+        Restore HTML/XML tags from placeholders
+        
+        Args:
+            text: Text with placeholders
+            tag_map: Dictionary mapping placeholders to original tags
+            
+        Returns:
+            str: Text with restored tags
+        """
+        restored_text = text
+        
+        # Sort placeholders by reverse order to avoid partial replacements
+        placeholders = sorted(tag_map.keys(), key=lambda x: int(x[len(self.placeholder_prefix):-len(self.placeholder_suffix)]), reverse=True)
+        
+        for placeholder in placeholders:
+            if placeholder in restored_text:
+                restored_text = restored_text.replace(placeholder, tag_map[placeholder])
+        
+        return restored_text
 
 
 def _get_node_text_content_with_br_as_newline(node):
@@ -47,6 +113,117 @@ def _get_node_text_content_with_br_as_newline(node):
             parts.append(child.tail)
 
     return "".join(parts)
+
+
+def _serialize_inline_tags(node, preserve_tags=True):
+    """
+    Serialize XML/HTML node content while preserving or removing inline tags
+    
+    Args:
+        node: lxml element node
+        preserve_tags: If True, preserve inline tags as XML strings
+        
+    Returns:
+        str: Serialized content with tags preserved or removed
+    """
+    parts = []
+    
+    if node.text:
+        parts.append(node.text)
+    
+    for child in node:
+        child_qname_str = child.tag
+        br_xhtml_tag = etree.QName(NAMESPACES['xhtml'], 'br').text
+        
+        # Extract local tag name without namespace
+        local_tag = etree.QName(child.tag).localname if '}' in child.tag else child.tag
+        
+        if child_qname_str == br_xhtml_tag:
+            if not (parts and (parts[-1].endswith('\n') or parts[-1] == '\n')):
+                parts.append('\n')
+        elif child_qname_str in CONTENT_BLOCK_TAGS_EPUB:
+            # For block tags, add newline but recurse into content
+            if parts and parts[-1] and not parts[-1].endswith('\n'):
+                parts.append('\n')
+            parts.append(_serialize_inline_tags(child, preserve_tags))
+            if parts and parts[-1] and not parts[-1].endswith('\n'):
+                parts.append('\n')
+        else:
+            # For inline tags like <RULE>, <span>, etc.
+            if preserve_tags:
+                # Preserve the tag in the text
+                attrs = ' '.join([f'{k}="{v}"' for k, v in child.attrib.items()])
+                opening_tag = f"<{local_tag}{' ' + attrs if attrs else ''}>"
+                closing_tag = f"</{local_tag}>"
+                
+                parts.append(opening_tag)
+                # Recursively process child content
+                parts.append(_serialize_inline_tags(child, preserve_tags))
+                parts.append(closing_tag)
+            else:
+                # Just get the text content without tags
+                parts.append(_serialize_inline_tags(child, preserve_tags))
+        
+        if child.tail:
+            parts.append(child.tail)
+    
+    return "".join(parts)
+
+
+def _rebuild_element_from_translated_content(element, translated_content):
+    """
+    Rebuild element structure from translated content containing inline tags
+    
+    Args:
+        element: lxml element to rebuild
+        translated_content: Translated text with preserved XML tags
+    """
+    # Clear existing content
+    element.text = None
+    element.tail = None
+    for child in list(element):
+        element.remove(child)
+    
+    # Parse the translated content as XML fragment
+    try:
+        # Wrap content in a temporary root to handle mixed content
+        wrapped_content = f"<temp_root>{translated_content}</temp_root>"
+        
+        # Parse with recovery mode to handle potential issues
+        parser = etree.XMLParser(recover=True, encoding='utf-8')
+        temp_root = etree.fromstring(wrapped_content.encode('utf-8'), parser)
+        
+        # Copy content from temp root to element
+        element.text = temp_root.text
+        
+        # Add all children from temp root
+        for child in temp_root:
+            # Create new element with the same tag and attributes
+            new_child = etree.SubElement(element, child.tag, attrib=dict(child.attrib))
+            new_child.text = child.text
+            new_child.tail = child.tail
+            
+            # Recursively copy any nested children
+            _copy_element_children(child, new_child)
+            
+    except Exception as e:
+        # Fallback: if parsing fails, just set as text
+        element.text = translated_content
+
+
+def _copy_element_children(source, target):
+    """
+    Recursively copy children from source element to target element
+    
+    Args:
+        source: Source lxml element
+        target: Target lxml element
+    """
+    for child in source:
+        new_child = etree.SubElement(target, child.tag, attrib=dict(child.attrib))
+        new_child.text = child.text
+        new_child.tail = child.tail
+        _copy_element_children(child, new_child)
 
 
 def _collect_epub_translation_jobs_recursive(element, file_path_abs, jobs_list, chunk_size, log_callback=None):
@@ -92,20 +269,29 @@ def _collect_epub_translation_jobs_recursive(element, file_path_abs, jobs_list, 
                     })
         else:
             # No block children, process entire content as a block
-            text_content_for_chunking = _get_node_text_content_with_br_as_newline(element).strip()
+            # Use the new function to preserve inline tags
+            text_content_for_chunking = _serialize_inline_tags(element, preserve_tags=True).strip()
             if text_content_for_chunking:
-                sub_chunks = split_text_into_chunks_with_context(text_content_for_chunking, chunk_size)
-                if not sub_chunks and text_content_for_chunking:
-                    sub_chunks = [{"context_before": "", "main_content": text_content_for_chunking, "context_after": ""}]
+                # Create tag preserver instance
+                tag_preserver = TagPreserver()
+                # Replace tags with placeholders
+                text_with_placeholders, tag_map = tag_preserver.preserve_tags(text_content_for_chunking)
+                
+                sub_chunks = split_text_into_chunks_with_context(text_with_placeholders, chunk_size)
+                if not sub_chunks and text_with_placeholders:
+                    sub_chunks = [{"context_before": "", "main_content": text_with_placeholders, "context_after": ""}]
 
                 if sub_chunks:
                     jobs_list.append({
                         'element_ref': element,
                         'type': 'block_content',
                         'original_text_stripped': text_content_for_chunking,
+                        'text_with_placeholders': text_with_placeholders,
+                        'tag_map': tag_map,
                         'sub_chunks': sub_chunks,
                         'file_path': file_path_abs,
-                        'translated_text': None
+                        'translated_text': None,
+                        'has_inline_tags': True  # Flag to indicate this content has inline tags
                     })
             # For block elements without block children, don't process children
             return
@@ -385,7 +571,15 @@ async def translate_epub_file(input_filepath, output_filepath,
                     log_callback, check_interruption_callback, custom_instructions
                 )
                 
-                job['translated_text'] = "\n".join(translated_parts)
+                # Join translated parts
+                translated_text = "\n".join(translated_parts)
+                
+                # If this job has a tag map, restore the tags
+                if 'tag_map' in job and job['tag_map']:
+                    tag_preserver = TagPreserver()
+                    translated_text = tag_preserver.restore_tags(translated_text, job['tag_map'])
+                
+                job['translated_text'] = translated_text
                 
                 has_translation_error = any("[TRANSLATION_ERROR" in part for part in translated_parts)
                 if has_translation_error:
@@ -442,9 +636,14 @@ async def translate_epub_file(input_filepath, output_filepath,
                 translated_content_unescaped = html.unescape(translated_content)
                 
                 if job['type'] == 'block_content':
-                    element.text = translated_content_unescaped
-                    for child_node in list(element):
-                        element.remove(child_node)
+                    # Check if this content had inline tags
+                    if job.get('has_inline_tags'):
+                        # Parse the translated content to rebuild the XML structure
+                        _rebuild_element_from_translated_content(element, translated_content_unescaped)
+                    else:
+                        element.text = translated_content_unescaped
+                        for child_node in list(element):
+                            element.remove(child_node)
                 elif job['type'] == 'text':
                     element.text = job['leading_space'] + translated_content_unescaped + job['trailing_space']
                 elif job['type'] == 'tail':

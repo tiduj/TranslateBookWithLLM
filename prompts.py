@@ -22,6 +22,7 @@ def generate_translation_prompt(main_content, context_before, context_after, pre
 + Preserve meaning and enhance fluidity
 + Adapt expressions and culture to the {target_language} language
 + Maintain the original layout of the text
++ Do NOT translate: code snippets, command lines, function names, variable names, URLs, file paths, or any technical syntax
 
 ## FORMATING
 + Translate ONLY the text enclosed within the tags "{INPUT_TAG_IN}" and "{INPUT_TAG_OUT}" from {source_lang} into {target_language}
@@ -29,6 +30,7 @@ def generate_translation_prompt(main_content, context_before, context_after, pre
 + Return ONLY the translation, formatted as requested
 + IMPORTANT: Preserve all special spaces and indentation exactly as they appear in the source text
 + Do NOT convert spaces to HTML entities like &nbsp; - maintain the original spacing
++ IMPORTANT: If you see placeholders like ⟦TAG0⟧, ⟦TAG1⟧, etc., these represent HTML/XML tags. Keep these placeholders EXACTLY as they appear in their original positions. Do NOT translate or modify these placeholders
 """
 
     previous_translation_block_text = ""
