@@ -22,11 +22,15 @@ def generate_translation_prompt(main_content, context_before, context_after, pre
 + Preserve meaning and enhance fluidity
 + Adapt expressions and culture to the {target_language} language
 + Maintain the original layout of the text
++ Do NOT translate: code snippets, command lines, function names, variable names, URLs, file paths, or any technical syntax
 
 ## FORMATING
 + Translate ONLY the text enclosed within the tags "{INPUT_TAG_IN}" and "{INPUT_TAG_OUT}" from {source_lang} into {target_language}
 + Surround your translation with {translate_tag_in} and {translate_tag_out} tags. For example: {translate_tag_in}Your text translated here.{translate_tag_out}
 + Return ONLY the translation, formatted as requested
++ IMPORTANT: Preserve all special spaces and indentation exactly as they appear in the source text
++ Do NOT convert spaces to HTML entities like &nbsp; - maintain the original spacing
++ IMPORTANT: If you see placeholders like ⟦TAG0⟧, ⟦TAG1⟧, etc., these represent HTML/XML tags. Keep these placeholders EXACTLY as they appear in their original positions. Do NOT translate or modify these placeholders
 """
 
     previous_translation_block_text = ""
@@ -132,6 +136,64 @@ def generate_subtitle_block_prompt(subtitle_blocks, previous_translation_block,
         custom_instructions_block,
         previous_translation_block_text,
         text_to_translate_block
+    ]
+    
+    return "\n\n".join(part.strip() for part in structured_prompt_parts if part and part.strip()).strip()
+
+
+def generate_post_processing_prompt(translated_text, target_language="French", 
+                                  translate_tag_in=TRANSLATE_TAG_IN, translate_tag_out=TRANSLATE_TAG_OUT,
+                                  custom_instructions=""):
+    """
+    Generate the post-processing prompt to improve translated text quality.
+    
+    Args:
+        translated_text: The already translated text to improve
+        target_language: Target language for the text
+        translate_tag_in/out: Tags for marking the improved text
+        custom_instructions: Additional improvement instructions
+        
+    Returns:
+        str: The complete prompt formatted for post-processing
+    """
+    
+    role_and_instructions_block = f"""
+## ROLE
+# You are a professional {target_language} editor and proofreader.
+
+## TASK
++ Review and improve the quality of the {target_language} text
++ Enhance fluidity and naturalness while preserving the original meaning
++ Correct any grammatical errors or awkward phrasing
++ Ensure consistency in style and tone
++ Make the text read as if originally written in {target_language}
+
+## FORMATTING
++ Review ONLY the text enclosed within the tags "{INPUT_TAG_IN}" and "{INPUT_TAG_OUT}"
++ Surround your improved version with {translate_tag_in} and {translate_tag_out} tags
++ Return ONLY the improved text, formatted as requested
++ Preserve all formatting, spacing, and special characters from the original
++ Keep placeholders like ⟦TAG0⟧, ⟦TAG1⟧ exactly as they appear
+"""
+
+    custom_instructions_block = ""
+    if custom_instructions and custom_instructions.strip():
+        custom_instructions_block = f"""
+
+### ADDITIONAL INSTRUCTIONS
+{custom_instructions.strip()}
+
+"""
+
+    text_to_improve_block = f"""
+{INPUT_TAG_IN}
+{translated_text}
+{INPUT_TAG_OUT}"""
+
+    structured_prompt_parts = [
+        role_and_instructions_block,
+        custom_instructions_block,
+        text_to_improve_block
     ]
     
     return "\n\n".join(part.strip() for part in structured_prompt_parts if part and part.strip()).strip()
