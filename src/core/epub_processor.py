@@ -13,7 +13,7 @@ from src.config import (
     DEFAULT_MODEL, MAIN_LINES_PER_CHUNK, API_ENDPOINT
 )
 from .text_processor import split_text_into_chunks_with_context
-from .translator import generate_translation_request
+from .translator import generate_translation_request, post_process_translation
 import re
 import hashlib
 import json
@@ -348,7 +348,8 @@ def _collect_epub_translation_jobs_recursive(element, file_path_abs, jobs_list, 
 
 async def translate_epub_chunks_with_context(chunks, source_language, target_language, model_name, 
                                            llm_client, previous_context, log_callback=None, 
-                                           check_interruption_callback=None, custom_instructions=""):
+                                           check_interruption_callback=None, custom_instructions="",
+                                           enable_post_processing=False, post_processing_instructions=""):
     """
     Translate EPUB chunks with previous translation context for consistency
     
@@ -393,6 +394,21 @@ async def translate_epub_chunks_with_context(chunks, source_language, target_lan
         )
 
         if translated_chunk_text is not None:
+            # Apply post-processing if enabled
+            if enable_post_processing:
+                if log_callback:
+                    log_callback("post_processing_epub_chunk", f"Post-processing EPUB chunk {i+1}/{total_chunks}")
+                
+                improved_text = await post_process_translation(
+                    translated_chunk_text,
+                    target_language,
+                    model_name,
+                    llm_client=llm_client,
+                    log_callback=log_callback,
+                    custom_instructions=post_processing_instructions
+                )
+                translated_chunk_text = improved_text
+            
             translated_parts.append(translated_chunk_text)
         else:
             err_msg_chunk = f"ERROR translating EPUB chunk {i+1}. Original content preserved."
@@ -410,7 +426,8 @@ async def translate_epub_file(input_filepath, output_filepath,
                               cli_api_endpoint=API_ENDPOINT,
                               progress_callback=None, log_callback=None, stats_callback=None,
                               check_interruption_callback=None, custom_instructions="",
-                              llm_provider="ollama", gemini_api_key=None):
+                              llm_provider="ollama", gemini_api_key=None,
+                              enable_post_processing=False, post_processing_instructions=""):
     """
     Translate an EPUB file
     
@@ -568,7 +585,8 @@ async def translate_epub_file(input_filepath, output_filepath,
                 translated_parts = await translate_epub_chunks_with_context(
                     job['sub_chunks'], source_language, target_language, 
                     model_name, llm_client or default_client, last_successful_llm_context, 
-                    log_callback, check_interruption_callback, custom_instructions
+                    log_callback, check_interruption_callback, custom_instructions,
+                    enable_post_processing, post_processing_instructions
                 )
                 
                 # Join translated parts

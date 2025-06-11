@@ -81,6 +81,8 @@ class TranslationConfig:
     # Translation parameters
     chunk_size: int = MAIN_LINES_PER_CHUNK
     custom_instructions: str = ""
+    enable_post_processing: bool = False
+    post_processing_instructions: str = ""
     
     # LLM parameters
     timeout: int = REQUEST_TIMEOUT
@@ -106,7 +108,9 @@ class TranslationConfig:
             interface_type="cli",
             enable_colors=not args.no_color,
             llm_provider=getattr(args, 'provider', LLM_PROVIDER),
-            gemini_api_key=getattr(args, 'gemini_api_key', GEMINI_API_KEY)
+            gemini_api_key=getattr(args, 'gemini_api_key', GEMINI_API_KEY),
+            enable_post_processing=getattr(args, 'post_process', False),
+            post_processing_instructions=getattr(args, 'post_process_instructions', '')
         )
     
     @classmethod
@@ -126,7 +130,9 @@ class TranslationConfig:
             interface_type="web",
             enable_interruption=True,
             llm_provider=request_data.get('llm_provider', LLM_PROVIDER),
-            gemini_api_key=request_data.get('gemini_api_key', GEMINI_API_KEY)
+            gemini_api_key=request_data.get('gemini_api_key', GEMINI_API_KEY),
+            enable_post_processing=request_data.get('enable_post_processing', False),
+            post_processing_instructions=request_data.get('post_processing_instructions', '')
         )
     
     def to_dict(self) -> dict:
@@ -143,5 +149,7 @@ class TranslationConfig:
             'retry_delay': self.retry_delay,
             'context_window': self.context_window,
             'llm_provider': self.llm_provider,
-            'gemini_api_key': self.gemini_api_key
+            'gemini_api_key': self.gemini_api_key,
+            'enable_post_processing': self.enable_post_processing,
+            'post_processing_instructions': self.post_processing_instructions
         }

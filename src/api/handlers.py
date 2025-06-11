@@ -160,7 +160,9 @@ async def perform_actual_translation(translation_id, config, active_translations
                 check_interruption_callback=should_interrupt_current_task,
                 custom_instructions=config.get('custom_instructions', ''),
                 llm_provider=config.get('llm_provider', 'ollama'),
-                gemini_api_key=config.get('gemini_api_key', '')
+                gemini_api_key=config.get('gemini_api_key', ''),
+                enable_post_processing=config.get('enable_post_processing', False),
+                post_processing_instructions=config.get('post_processing_instructions', '')
             )
             active_translations[translation_id]['result'] = "[EPUB file translated - download to view]"
             
@@ -189,7 +191,9 @@ async def perform_actual_translation(translation_id, config, active_translations
                 check_interruption_callback=should_interrupt_current_task,
                 custom_instructions=config.get('custom_instructions', ''),
                 llm_provider=config.get('llm_provider', 'ollama'),
-                gemini_api_key=config.get('gemini_api_key', '')
+                gemini_api_key=config.get('gemini_api_key', ''),
+                enable_post_processing=config.get('enable_post_processing', False),
+                post_processing_instructions=config.get('post_processing_instructions', '')
             )
 
             if os.path.exists(output_filepath_on_server) and active_translations[translation_id].get('status') not in ['error', 'interrupted_before_save']:
@@ -218,7 +222,9 @@ async def perform_actual_translation(translation_id, config, active_translations
                 check_interruption_callback=should_interrupt_current_task,
                 custom_instructions=config.get('custom_instructions', ''),
                 llm_provider=config.get('llm_provider', 'ollama'),
-                gemini_api_key=config.get('gemini_api_key', '')
+                gemini_api_key=config.get('gemini_api_key', ''),
+                enable_post_processing=config.get('enable_post_processing', False),
+                post_processing_instructions=config.get('post_processing_instructions', '')
             )
             
             active_translations[translation_id]['result'] = "[SRT file translated - download to view]"
