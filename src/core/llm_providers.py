@@ -136,8 +136,10 @@ class GeminiProvider(LLMProvider):
                 for model in data.get("models", []):
                     model_name = model.get("name", "").replace("models/", "")
                     
-                    # Skip thinking models
-                    if "thinking" in model_name.lower():
+                    # Skip thinking, experimental, latest, and vision models
+                    model_name_lower = model_name.lower()
+                    skip_keywords = ["thinking", "experimental", "latest", "vision", "-exp-"]
+                    if any(keyword in model_name_lower for keyword in skip_keywords):
                         continue
                     
                     # Only include models that support generateContent
