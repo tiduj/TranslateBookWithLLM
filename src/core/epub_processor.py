@@ -4,6 +4,7 @@ EPUB processing module for specialized e-book translation
 import os
 import zipfile
 import tempfile
+import html
 from lxml import etree
 from tqdm.auto import tqdm
 
@@ -436,14 +437,18 @@ async def translate_epub_file(input_filepath, output_filepath,
                 element = job['element_ref']
                 translated_content = job['translated_text']
 
+                # Unescape HTML entities that may have been translated
+                # This converts &nbsp; and other entities to their actual characters
+                translated_content_unescaped = html.unescape(translated_content)
+                
                 if job['type'] == 'block_content':
-                    element.text = translated_content
+                    element.text = translated_content_unescaped
                     for child_node in list(element):
                         element.remove(child_node)
                 elif job['type'] == 'text':
-                    element.text = job['leading_space'] + translated_content + job['trailing_space']
+                    element.text = job['leading_space'] + translated_content_unescaped + job['trailing_space']
                 elif job['type'] == 'tail':
-                    element.tail = job['leading_space'] + translated_content + job['trailing_space']
+                    element.tail = job['leading_space'] + translated_content_unescaped + job['trailing_space']
 
             # Update metadata
             metadata = opf_root.find('.//opf:metadata', namespaces=NAMESPACES)

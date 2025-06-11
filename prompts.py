@@ -27,6 +27,8 @@ def generate_translation_prompt(main_content, context_before, context_after, pre
 + Translate ONLY the text enclosed within the tags "{INPUT_TAG_IN}" and "{INPUT_TAG_OUT}" from {source_lang} into {target_language}
 + Surround your translation with {translate_tag_in} and {translate_tag_out} tags. For example: {translate_tag_in}Your text translated here.{translate_tag_out}
 + Return ONLY the translation, formatted as requested
++ IMPORTANT: Preserve all special spaces and indentation exactly as they appear in the source text
++ Do NOT convert spaces to HTML entities like &nbsp; - maintain the original spacing
 """
 
     previous_translation_block_text = ""
