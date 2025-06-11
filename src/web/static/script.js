@@ -4,8 +4,8 @@ let currentProcessingJob = null;
 let isBatchActive = false;
 let lastCompletedJobData = null;
 
-const API_BASE_URL = `${window.location.protocol}//${window.location.hostname}:5000`;
-const socket = io(API_BASE_URL);
+const API_BASE_URL = window.location.origin;
+const socket = io();
 
 socket.on('connect', () => {
     console.log('WebSocket connected to:', API_BASE_URL);

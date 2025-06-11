@@ -11,7 +11,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-EXPOSE 5000
+ARG PORT=5000
+ENV PORT=$PORT
+EXPOSE $PORT
 
 VOLUME /app/translated_files
 

@@ -118,7 +118,7 @@ pip install requests tqdm python-dotenv
     python translation_api.py
     ```
 
-2.  **Open Browser:** Navigate to `http://localhost:5000`
+2.  **Open Browser:** Navigate to `http://localhost:5000` (default port, configurable via PORT environment variable)
 
 3. **Configure and Translate:**
    - Select source and target languages
@@ -268,11 +268,11 @@ structured_prompt = f"""
 **Web Interface Won't Start:**
 
 ```bash
-# Check if port 5000 is in use
+# Check if the configured port is in use (default 5000)
 netstat -an | find "5000"
 
 # Try different port
-# Default port is 5000, configured in translation_api.py
+# Default port is 5000, configured via PORT environment variable
 ```
 
 **Ollama Connection Issues:**

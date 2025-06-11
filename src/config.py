@@ -12,6 +12,7 @@ load_dotenv()
 # Load from environment variables with defaults
 API_ENDPOINT = os.getenv('API_ENDPOINT', 'http://localhost:11434/api/generate')
 DEFAULT_MODEL = os.getenv('DEFAULT_MODEL', 'mistral-small:24b')
+PORT = int(os.getenv('PORT', '5000'))
 MAIN_LINES_PER_CHUNK = int(os.getenv('MAIN_LINES_PER_CHUNK', '25'))
 REQUEST_TIMEOUT = int(os.getenv('REQUEST_TIMEOUT', '60'))
 OLLAMA_NUM_CTX = int(os.getenv('OLLAMA_NUM_CTX', '2048'))

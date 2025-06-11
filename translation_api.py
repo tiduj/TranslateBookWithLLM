@@ -12,7 +12,8 @@ from src.config import (
     DEFAULT_MODEL,
     MAIN_LINES_PER_CHUNK,
     REQUEST_TIMEOUT,
-    OLLAMA_NUM_CTX
+    OLLAMA_NUM_CTX,
+    PORT
 )
 from src.api.routes import configure_routes
 from src.api.websocket import configure_websocket_handlers
@@ -51,8 +52,8 @@ configure_websocket_handlers(socketio)
 if __name__ == '__main__':
     print("\n" + "="*60 + f"\n🚀 LLM TRANSLATION SERVER (Version {datetime.now().strftime('%Y%m%d-%H%M')})\n" + "="*60)
     print(f"   - Default Ollama Endpoint: {DEFAULT_OLLAMA_API_ENDPOINT}")
-    print(f"   - Interface: http://localhost:5000 (or http://<your_ip>:5000)")
-    print(f"   - API: http://localhost:5000/api/")
+    print(f"   - Interface: http://localhost:{PORT} (or http://<your_ip>:{PORT})")
+    print(f"   - API: http://localhost:{PORT}/api/")
     print(f"   - Supported formats: .txt and .epub")
     print("\n💡 Press Ctrl+C to stop the server\n")
-    socketio.run(app, debug=False, host='0.0.0.0', port=5000, allow_unsafe_werkzeug=True)
+    socketio.run(app, debug=False, host='0.0.0.0', port=PORT, allow_unsafe_werkzeug=True)
