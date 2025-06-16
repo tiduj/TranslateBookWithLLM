@@ -15,7 +15,9 @@ from src.config import (
     DEFAULT_MODEL,
     MAIN_LINES_PER_CHUNK,
     REQUEST_TIMEOUT,
-    OLLAMA_NUM_CTX
+    OLLAMA_NUM_CTX,
+    MAX_TRANSLATION_ATTEMPTS,
+    RETRY_DELAY_SECONDS
 )
 
 
@@ -143,8 +145,8 @@ def configure_routes(app, active_translations, output_dir, start_translation_job
             "chunk_size": MAIN_LINES_PER_CHUNK,
             "timeout": REQUEST_TIMEOUT,
             "context_window": OLLAMA_NUM_CTX,
-            "max_attempts": 2,
-            "retry_delay": 2,
+            "max_attempts": MAX_TRANSLATION_ATTEMPTS,
+            "retry_delay": RETRY_DELAY_SECONDS,
             "supported_formats": ["txt", "epub", "srt"],
             "gemini_api_key": gemini_api_key
         })

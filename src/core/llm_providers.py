@@ -6,6 +6,7 @@ from typing import Optional, Dict, Any
 import re
 import httpx
 import json
+import asyncio
 
 from src.config import (
     API_ENDPOINT, DEFAULT_MODEL, REQUEST_TIMEOUT, OLLAMA_NUM_CTX,
@@ -83,21 +84,25 @@ class OllamaProvider(LLMProvider):
                 except httpx.TimeoutException as e:
                     print(f"Ollama API Timeout (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
                     if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
+                        await asyncio.sleep(RETRY_DELAY_SECONDS)
                         continue
                     return None
                 except httpx.HTTPStatusError as e:
                     print(f"Ollama API HTTP Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
                     if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
+                        await asyncio.sleep(RETRY_DELAY_SECONDS)
                         continue
                     return None
                 except json.JSONDecodeError as e:
                     print(f"Ollama API JSON Decode Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
                     if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
+                        await asyncio.sleep(RETRY_DELAY_SECONDS)
                         continue
                     return None
                 except Exception as e:
                     print(f"Ollama API Unknown Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
                     if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
+                        await asyncio.sleep(RETRY_DELAY_SECONDS)
                         continue
                     return None
                     
@@ -209,6 +214,7 @@ class GeminiProvider(LLMProvider):
                 except httpx.TimeoutException as e:
                     print(f"Gemini API Timeout (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
                     if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
+                        await asyncio.sleep(RETRY_DELAY_SECONDS)
                         continue
                     return None
                 except httpx.HTTPStatusError as e:
@@ -216,16 +222,19 @@ class GeminiProvider(LLMProvider):
                     if hasattr(e, 'response') and hasattr(e.response, 'text'):
                         print(f"Response details: Status {e.response.status_code}, Body: {e.response.text[:200]}...")
                     if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
+                        await asyncio.sleep(RETRY_DELAY_SECONDS)
                         continue
                     return None
                 except json.JSONDecodeError as e:
                     print(f"Gemini API JSON Decode Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
                     if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
+                        await asyncio.sleep(RETRY_DELAY_SECONDS)
                         continue
                     return None
                 except Exception as e:
                     print(f"Gemini API Unknown Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
                     if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
+                        await asyncio.sleep(RETRY_DELAY_SECONDS)
                         continue
                     return None
                     
