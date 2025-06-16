@@ -24,8 +24,6 @@ build/
 # Project specific
 translated_files/
 DoNotCommit/
-.claude/
-CLAUDE.md
 
 # Git
 .git/
