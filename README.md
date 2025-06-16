@@ -6,10 +6,11 @@
 
 ## Features
 
-- 📚 **Multiple Format Support**: Translate plain text (.txt), book (.EPUB) and Subtitle (.SRT) files while preserving formatting
+- 📚 **Multiple Format Support**: Translate plain text (.txt), book (.EPUB) and subtitle (.SRT) files while preserving formatting
 - 🌐 **Web Interface**: User-friendly browser-based interface
 - 💻 **CLI Support**: Command-line interface for automation and scripting
 - 🤖 **Multiple LLM Providers**: Support for both local Ollama models and Google Gemini API
+- 🐳 **Docker Support**: Easy deployment with Docker container
 
 ## Windows Installation Guide
 
@@ -118,7 +119,9 @@ pip install requests tqdm python-dotenv
     python translation_api.py
     ```
 
-2.  **Open Browser:** Navigate to `http://localhost:5000` (default port, configurable via PORT environment variable)
+2.  **Open Browser:** Navigate to `http://localhost:5000`
+    - Port can be configured via `PORT` environment variable
+    - Example: `PORT=8080 python translation_api.py`
 
 3. **Configure and Translate:**
    - Select source and target languages
@@ -138,8 +141,8 @@ python translate.py -i input.txt -o output.txt
 
 **Command Arguments**
 
-  - `-i, --input`: (Required) Path to the input file (.txt or .epub).
-  - `-o, --output`: Output file path. If not specified, a default name will be generated.
+  - `-i, --input`: (Required) Path to the input file (.txt, .epub, or .srt).
+  - `-o, --output`: Output file path. If not specified, a default name will be generated (format: input_translated.ext).
   - `-sl, --source_lang`: Source language (default: "English").
   - `-tl, --target_lang`: Target language (default: "French").
   - `-m, --model`: LLM model to use (default: "mistral-small:24b").
@@ -157,6 +160,9 @@ python translate.py -i book.txt -o book_fr.txt
 # Translate EPUB file
 python translate.py -i book.epub -o book_fr.epub
 
+# Translate SRT subtitle file
+python translate.py -i movie.srt -o movie_fr.srt
+
 # English to German with different model
 python translate.py -i story.txt -o story_de.txt -sl English -tl German -m qwen2:7b
 
@@ -170,8 +176,15 @@ python translate.py -i book.txt -o book_fr.txt --provider gemini --gemini_api_ke
 ### EPUB File Support
 
 The application fully supports EPUB files:
-- **Preserves Structure**: Maintains must of the original EPUB structure and formatting
+- **Preserves Structure**: Maintains most of the original EPUB structure and formatting
 - **Selective Translation**: Only translates content blocks (paragraphs, headings, etc.)
+
+### SRT Subtitle File Support
+
+The application fully supports SRT subtitle files:
+- **Preserves Timing**: Maintains all original timestamp information
+- **Format Preservation**: Keeps subtitle numbering and structure intact
+- **Smart Translation**: Translates only the subtitle text, preserving technical elements
 
 ### Google Gemini Support
 
@@ -201,6 +214,42 @@ python translate.py -i book.txt -o book_translated.txt \
 ```
 
 **Note:** Gemini API requires an internet connection and has usage quotas. Check [Google's pricing](https://ai.google.dev/pricing) for details.
+
+---
+
+## Docker Support
+
+### Quick Start with Docker
+
+```bash
+# Build the Docker image
+docker build -t translatebook .
+
+# Run the container
+docker run -p 5000:5000 -v $(pwd)/translated_files:/app/translated_files translatebook
+
+# Or with custom port
+docker run -p 8080:5000 -e PORT=5000 -v $(pwd)/translated_files:/app/translated_files translatebook
+```
+
+### Docker Compose (Optional)
+
+Create a `docker-compose.yml` file:
+
+```yaml
+version: '3'
+services:
+  translatebook:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./translated_files:/app/translated_files
+    environment:
+      - PORT=5000
+```
+
+Then run: `docker-compose up`
 
 ---
 
@@ -324,8 +373,11 @@ The application follows a clean modular architecture:
 src/
 ├── core/                    # Core translation logic
 │   ├── text_processor.py    # Text chunking and context management
-│   ├── translator.py        # LLM communication and translation
-│   └── epub_processor.py    # EPUB-specific processing
+│   ├── translator.py        # Translation orchestration and job tracking
+│   ├── llm_client.py        # Async API calls to LLM providers
+│   ├── llm_providers.py     # Provider abstraction (Ollama, Gemini)
+│   ├── epub_processor.py    # EPUB-specific processing
+│   └── srt_processor.py     # SRT subtitle processing
 ├── api/                     # Flask web server
 │   ├── routes.py           # REST API endpoints
 │   ├── websocket.py        # WebSocket handlers for real-time updates
@@ -335,7 +387,9 @@ src/
 │   └── templates/          # HTML templates
 └── utils/                   # Utilities
     ├── file_utils.py       # File processing utilities
-    └── security.py         # Security features for file handling
+    ├── security.py         # Security features for file handling
+    ├── file_detector.py    # Centralized file type detection
+    └── unified_logger.py   # Unified logging system
 ```
 
 ### Root Level Files
@@ -351,12 +405,20 @@ src/
 1. **Text Processing**: Intelligent chunking preserving sentence boundaries
 2. **Context Management**: Maintains translation context between chunks
 3. **LLM Communication**: Async requests with retry logic and timeout handling
-4. **EPUB Processing**: XML namespace-aware processing preserving structure
+4. **Format-Specific Processing**: 
+   - EPUB: XML namespace-aware processing preserving structure
+   - SRT: Subtitle timing and format preservation
 5. **Error Recovery**: Graceful degradation with original text preservation
 
 The web interface communicates via REST API and WebSocket for real-time progress, while the CLI version provides direct access for automation.
 
 ### Key Features Implementation
+
+#### LLM Provider Architecture
+- **Abstraction Layer**: `LLMProvider` base class for easy provider addition
+- **Multiple Providers**: Built-in support for Ollama (local) and Gemini (cloud)
+- **Factory Pattern**: Dynamic provider instantiation based on configuration
+- **Unified Interface**: Consistent API across different LLM providers
 
 #### Asynchronous Processing
 - Uses `httpx` for concurrent API requests
