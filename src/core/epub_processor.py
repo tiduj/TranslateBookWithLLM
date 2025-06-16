@@ -19,6 +19,115 @@ import hashlib
 import json
 
 
+def safe_iter_children(element):
+    """
+    Safely iterate over element children, handling different lxml/Cython versions
+    
+    Args:
+        element: lxml element
+        
+    Yields:
+        child elements
+    """
+    try:
+        # Try normal iteration first
+        for child in element:
+            yield child
+    except TypeError:
+        # If that fails, try alternative methods
+        try:
+            # Try getchildren() (deprecated but might work)
+            if hasattr(element, 'getchildren'):
+                for child in element.getchildren():
+                    yield child
+            else:
+                # Try converting to list
+                children = list(element)
+                for child in children:
+                    yield child
+        except:
+            # If all else fails, use xpath
+            try:
+                for child in element.xpath('*'):
+                    yield child
+            except:
+                # Give up - no children accessible
+                pass
+
+
+def safe_get_tag(element):
+    """
+    Safely get the tag of an element, handling cases where it might be a method
+    
+    Args:
+        element: lxml element
+        
+    Returns:
+        str: The tag name
+    """
+    try:
+        # First try: direct access
+        tag = element.tag
+        if isinstance(tag, str):
+            return tag
+            
+        # Second try: call if it's a method
+        if callable(tag):
+            tag_result = tag()
+            if isinstance(tag_result, str):
+                return tag_result
+        
+        # Third try: use etree.tostring to extract tag name
+        try:
+            # Get element as string
+            elem_str = etree.tostring(element, encoding='unicode', method='xml')
+            # Extract tag name from string (e.g., "<p class='bull'>..." -> "p")
+            import re
+            match = re.match(r'<([^>\s]+)', elem_str)
+            if match:
+                tag_with_ns = match.group(1)
+                # Handle namespaced tags
+                if '}' in tag_with_ns:
+                    return tag_with_ns  # Return full namespaced tag
+                else:
+                    # Add namespace if element has one
+                    if hasattr(element, 'nsmap') and None in element.nsmap:
+                        return f"{{{element.nsmap[None]}}}{tag_with_ns}"
+                    return tag_with_ns
+        except:
+            pass
+            
+        # Fourth try: Use QName if element has it
+        try:
+            if hasattr(element, 'qname'):
+                return str(element.qname)
+        except:
+            pass
+            
+        return ""
+    except:
+        return ""
+
+
+def safe_get_attrib(element):
+    """
+    Safely get the attributes of an element
+    
+    Args:
+        element: lxml element
+        
+    Returns:
+        dict: The attributes dictionary
+    """
+    try:
+        attrib = element.attrib
+        if callable(attrib):
+            return attrib()
+        return attrib
+    except:
+        return {}
+
+
 class TagPreserver:
     """
     Preserves HTML/XML tags during translation by replacing them with simple placeholders
@@ -96,8 +205,21 @@ def _get_node_text_content_with_br_as_newline(node):
     if node.text:
         parts.append(node.text)
 
-    for child in node:
-        child_qname_str = child.tag
+    for child in safe_iter_children(node):
+        child_qname_str = safe_get_tag(child)
+        
+        # Skip if we couldn't get a valid tag
+        if not child_qname_str or ' at 0x' in str(child_qname_str):
+            # Try to get text content anyway
+            try:
+                if hasattr(child, 'text') and child.text:
+                    parts.append(child.text)
+                if hasattr(child, 'tail') and child.tail:
+                    parts.append(child.tail)
+            except:
+                pass
+            continue
+            
         br_xhtml_tag = etree.QName(NAMESPACES['xhtml'], 'br').text
 
         if child_qname_str == br_xhtml_tag:
@@ -126,48 +248,45 @@ def _serialize_inline_tags(node, preserve_tags=True):
     Returns:
         str: Serialized content with tags preserved or removed
     """
-    parts = []
-    
-    if node.text:
-        parts.append(node.text)
-    
-    for child in node:
-        child_qname_str = child.tag
-        br_xhtml_tag = etree.QName(NAMESPACES['xhtml'], 'br').text
-        
-        # Extract local tag name without namespace
-        local_tag = etree.QName(child.tag).localname if '}' in child.tag else child.tag
-        
-        if child_qname_str == br_xhtml_tag:
-            if not (parts and (parts[-1].endswith('\n') or parts[-1] == '\n')):
-                parts.append('\n')
-        elif child_qname_str in CONTENT_BLOCK_TAGS_EPUB:
-            # For block tags, add newline but recurse into content
-            if parts and parts[-1] and not parts[-1].endswith('\n'):
-                parts.append('\n')
-            parts.append(_serialize_inline_tags(child, preserve_tags))
-            if parts and parts[-1] and not parts[-1].endswith('\n'):
-                parts.append('\n')
+    # Use lxml's built-in method first, then clean up
+    try:
+        if preserve_tags:
+            # Get the full XML content
+            content = etree.tostring(node, encoding='unicode', method='xml', pretty_print=False)
+            # Remove the outer tag
+            import re
+            # Match opening tag
+            match = re.match(r'^<[^>]+>', content)
+            if match:
+                opening_tag_len = len(match.group(0))
+                # Find closing tag from the end
+                closing_match = re.search(r'</[^>]+>$', content)
+                if closing_match:
+                    closing_tag_start = closing_match.start()
+                    # Extract inner content
+                    inner_content = content[opening_tag_len:closing_tag_start]
+                    return inner_content
+            return content
         else:
-            # For inline tags like <RULE>, <span>, etc.
-            if preserve_tags:
-                # Preserve the tag in the text
-                attrs = ' '.join([f'{k}="{v}"' for k, v in child.attrib.items()])
-                opening_tag = f"<{local_tag}{' ' + attrs if attrs else ''}>"
-                closing_tag = f"</{local_tag}>"
-                
-                parts.append(opening_tag)
-                # Recursively process child content
-                parts.append(_serialize_inline_tags(child, preserve_tags))
-                parts.append(closing_tag)
-            else:
-                # Just get the text content without tags
-                parts.append(_serialize_inline_tags(child, preserve_tags))
+            # Get text content only
+            return etree.tostring(node, encoding='unicode', method='text')
+    except Exception as e:
+        # Fallback to manual serialization
+        parts = []
         
-        if child.tail:
-            parts.append(child.tail)
-    
-    return "".join(parts)
+        if hasattr(node, 'text') and node.text:
+            parts.append(node.text)
+        
+        try:
+            for child in node:
+                # Get child content
+                child_content = etree.tostring(child, encoding='unicode', method='xml')
+                if child_content and ' at 0x' not in child_content:
+                    parts.append(child_content)
+        except:
+            pass
+        
+        return "".join(parts)
 
 
 def _rebuild_element_from_translated_content(element, translated_content):
@@ -197,9 +316,9 @@ def _rebuild_element_from_translated_content(element, translated_content):
         element.text = temp_root.text
         
         # Add all children from temp root
-        for child in temp_root:
+        for child in safe_iter_children(temp_root):
             # Create new element with the same tag and attributes
-            new_child = etree.SubElement(element, child.tag, attrib=dict(child.attrib))
+            new_child = etree.SubElement(element, safe_get_tag(child), attrib=dict(safe_get_attrib(child)))
             new_child.text = child.text
             new_child.tail = child.tail
             
@@ -219,8 +338,8 @@ def _copy_element_children(source, target):
         source: Source lxml element
         target: Target lxml element
     """
-    for child in source:
-        new_child = etree.SubElement(target, child.tag, attrib=dict(child.attrib))
+    for child in safe_iter_children(source):
+        new_child = etree.SubElement(target, safe_get_tag(child), attrib=dict(safe_get_attrib(child)))
         new_child.text = child.text
         new_child.tail = child.tail
         _copy_element_children(child, new_child)
@@ -237,12 +356,14 @@ def _collect_epub_translation_jobs_recursive(element, file_path_abs, jobs_list, 
         chunk_size (int): Target chunk size
         log_callback (callable): Logging callback
     """
-    if element.tag in IGNORED_TAGS_EPUB:
+    element_tag = safe_get_tag(element)
+    if element_tag in IGNORED_TAGS_EPUB:
         return
+    
 
-    if element.tag in CONTENT_BLOCK_TAGS_EPUB:
+    if element_tag in CONTENT_BLOCK_TAGS_EPUB:
         # Check if this block element contains other block elements
-        has_block_children = any(child.tag in CONTENT_BLOCK_TAGS_EPUB for child in element)
+        has_block_children = any(safe_get_tag(child) in CONTENT_BLOCK_TAGS_EPUB for child in safe_iter_children(element))
         
         if has_block_children:
             # If it has block children, don't process as a single block
@@ -271,6 +392,13 @@ def _collect_epub_translation_jobs_recursive(element, file_path_abs, jobs_list, 
             # No block children, process entire content as a block
             # Use the new function to preserve inline tags
             text_content_for_chunking = _serialize_inline_tags(element, preserve_tags=True).strip()
+            
+            # Filter out any object representations that might have leaked through
+            if ' at 0x' in text_content_for_chunking:
+                # Remove object representations like "<...at 0x...>"
+                import re
+                text_content_for_chunking = re.sub(r'<[^>]*at 0x[0-9A-Fa-f]+>', '', text_content_for_chunking).strip()
+            
             if text_content_for_chunking:
                 # Create tag preserver instance
                 tag_preserver = TagPreserver()
@@ -319,11 +447,11 @@ def _collect_epub_translation_jobs_recursive(element, file_path_abs, jobs_list, 
                     })
 
     # Recursive processing of children
-    for child in element:
+    for child in safe_iter_children(element):
         _collect_epub_translation_jobs_recursive(child, file_path_abs, jobs_list, chunk_size, log_callback)
 
     # Handle tail text for non-block elements
-    if element.tag not in CONTENT_BLOCK_TAGS_EPUB and element.tail:
+    if element_tag not in CONTENT_BLOCK_TAGS_EPUB and element.tail:
         original_tail_content = element.tail
         tail_to_translate = original_tail_content.strip()
         if tail_to_translate:
@@ -643,7 +771,7 @@ async def translate_epub_file(input_filepath, output_filepath,
 
             iterator_phase3 = tqdm(all_translation_jobs, desc="Updating EPUB content", unit="seg") if not log_callback else all_translation_jobs
             for job in iterator_phase3:
-                if job.get('translated_text') is None: 
+                if job.get('translated_text') is None:
                     continue
 
                 element = job['element_ref']
