@@ -170,6 +170,15 @@ function toggleProviderSettings() {
     }
 }
 
+function refreshModels() {
+    const provider = document.getElementById('llmProvider').value;
+    if (provider === 'ollama') {
+        loadAvailableModels();
+    } else if (provider === 'gemini') {
+        loadGeminiModels();
+    }
+}
+
 // Track the current request to prevent race conditions
 let currentModelLoadRequest = null;
 
