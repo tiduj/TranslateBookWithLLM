@@ -348,32 +348,6 @@ def configure_routes(app, active_translations, output_dir, start_translation_job
             return jsonify({"message": "Interruption signal sent. Translation will stop after the current segment."}), 200
         return jsonify({"message": "The translation is not in an interruptible state (e.g., already completed or failed)."}), 400
 
-    @app.route('/api/download/<translation_id>', methods=['GET'])
-    def download_translated_output_file(translation_id):
-        if translation_id not in active_translations:
-            return jsonify({"error": "Translation ID not found."}), 404
-        
-        job_data = active_translations[translation_id]
-        server_filepath = job_data.get('output_filepath')
-
-        if not server_filepath:
-            config_output_filename = job_data.get('config', {}).get('output_filename')
-            if config_output_filename:
-                server_filepath = os.path.join(output_dir, config_output_filename)
-            else:
-                return jsonify({"error": "Output filename configuration missing."}), 404
-                
-        if not os.path.exists(server_filepath):
-            print(f"Download error: File '{server_filepath}' for TID {translation_id} not found on server.")
-            return jsonify({"error": f"File '{os.path.basename(server_filepath)}' not found. It might have failed, been interrupted before saving, or been cleaned up."}), 404
-        
-        try:
-            directory = os.path.abspath(os.path.dirname(server_filepath))
-            filename = os.path.basename(server_filepath)
-            return send_from_directory(directory, filename, as_attachment=True)
-        except Exception as e:
-            print(f"Error sending file '{server_filepath}' for {translation_id}: {e}")
-            return jsonify({"error": f"Server error during download preparation: {str(e)}"}), 500
 
     @app.route('/api/translations', methods=['GET'])
     def list_all_translations():

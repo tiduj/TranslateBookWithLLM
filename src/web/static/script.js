@@ -2,7 +2,6 @@ let filesToProcess = [];
 let translationQueue = [];
 let currentProcessingJob = null;
 let isBatchActive = false;
-let lastCompletedJobData = null;
 
 const API_BASE_URL = window.location.origin;
 const socket = io();
@@ -46,21 +45,7 @@ function finishCurrentFileTranslationUI(statusMessage, messageType, resultData) 
     currentFile.status = resultData.status || 'unknown_error';
     currentFile.result = resultData.result;
 
-    if (resultData && resultData.result) {
-        document.getElementById('outputSection').classList.remove('hidden');
-        document.getElementById('outputTitle').textContent = `📄 Translation Result for ${currentFile.name}`;
-
-        lastCompletedJobData = {
-            translationId: currentProcessingJob.translationId,
-            outputFilename: currentFile.outputFilename,
-            status: resultData.status,
-            fileType: resultData.file_type
-        };
-        document.getElementById('downloadBtn').disabled = !(lastCompletedJobData.outputFilename && (lastCompletedJobData.status === 'completed' || lastCompletedJobData.status === 'interrupted'));
-
-    } else {
-         document.getElementById('downloadBtn').disabled = true;
-    }
+    // Output section removed
 
     showMessage(statusMessage, messageType);
     updateFileStatusInList(currentFile.name, resultData.status === 'completed' ? 'Completed' : (resultData.status === 'interrupted' ? 'Interrupted' : 'Error'));
@@ -434,13 +419,11 @@ function resetFiles() {
     translationQueue = [];
     currentProcessingJob = null;
     isBatchActive = false;
-    lastCompletedJobData = null;
 
     document.getElementById('fileInput').value = '';
     updateFileDisplay();
 
     document.getElementById('progressSection').classList.add('hidden');
-    document.getElementById('outputSection').classList.add('hidden');
     document.getElementById('logContainer').innerHTML = '';
     document.getElementById('translateBtn').innerHTML = '▶️ Start Translation Batch';
     document.getElementById('translateBtn').disabled = true;
@@ -516,7 +499,6 @@ async function startBatchTranslation() {
     document.getElementById('interruptBtn').classList.remove('hidden');
     document.getElementById('interruptBtn').disabled = false;
 
-    document.getElementById('outputSection').classList.add('hidden');
     document.getElementById('logContainer').innerHTML = '';
 
     addLog(`🚀 Batch translation started for ${translationQueue.length} file(s).`);
@@ -545,8 +527,6 @@ async function processNextFileInQueue() {
     ['totalChunks', 'completedChunks', 'failedChunks'].forEach(id => document.getElementById(id).textContent = '0');
     document.getElementById('elapsedTime').textContent = '0s';
     document.getElementById('logContainer').innerHTML = '';
-    document.getElementById('outputSection').classList.add('hidden');
-    document.getElementById('downloadBtn').disabled = true;
 
     if (fileToTranslate.fileType === 'epub') {
         document.getElementById('statsGrid').style.display = 'none';
@@ -684,19 +664,6 @@ function updateProgress(percent) {
     progressBar.textContent = Math.round(percent) + '%';
 }
 
-function downloadLastTranslation() {
-    if (!lastCompletedJobData || !lastCompletedJobData.translationId) {
-        showMessage('No completed translation available for download, or ID missing.', 'error'); return;
-    }
-    if (lastCompletedJobData.status !== 'completed' && lastCompletedJobData.status !== 'interrupted') {
-         showMessage(`Cannot download file as its status is '${lastCompletedJobData.status}'.`, 'error'); return;
-    }
-    
-    const fileTypeIcon = lastCompletedJobData.fileType === 'epub' ? '📚' : (lastCompletedJobData.fileType === 'srt' ? '🎬' : '📄');
-    const downloadUrl = `${API_BASE_URL}/api/download/${lastCompletedJobData.translationId}`;
-    addLog(`${fileTypeIcon} Initiating download for ${lastCompletedJobData.outputFilename} from: ${downloadUrl}`);
-    window.location.href = downloadUrl;
-}
 
 // Initialize event listeners
 window.addEventListener('DOMContentLoaded', function() {
