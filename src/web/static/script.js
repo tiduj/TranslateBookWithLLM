@@ -50,6 +50,11 @@ function finishCurrentFileTranslationUI(statusMessage, messageType, resultData) 
     showMessage(statusMessage, messageType);
     updateFileStatusInList(currentFile.name, resultData.status === 'completed' ? 'Completed' : (resultData.status === 'interrupted' ? 'Interrupted' : 'Error'));
 
+    // Remove file from filesToProcess if translation completed or was interrupted
+    if (resultData.status === 'completed' || resultData.status === 'interrupted') {
+        removeFileFromProcessingList(currentFile.name);
+    }
+
     currentProcessingJob = null;
     processNextFileInQueue();
 }
@@ -411,6 +416,16 @@ function updateFileDisplay() {
     } else {
         document.getElementById('fileInfo').classList.add('hidden');
         document.getElementById('translateBtn').disabled = true;
+    }
+}
+
+function removeFileFromProcessingList(filename) {
+    // Remove file from filesToProcess array
+    const fileIndex = filesToProcess.findIndex(f => f.name === filename);
+    if (fileIndex !== -1) {
+        filesToProcess.splice(fileIndex, 1);
+        updateFileDisplay();
+        addLog(`🗑️ Removed ${filename} from file list (source file cleaned up)`);
     }
 }
 
