@@ -429,7 +429,26 @@ function removeFileFromProcessingList(filename) {
     }
 }
 
-function resetFiles() {
+async function resetFiles() {
+    // First, interrupt current translation if active
+    if (currentProcessingJob && currentProcessingJob.translationId && isBatchActive) {
+        addLog("🛑 Interrupting current translation before clearing files...");
+        try {
+            await fetch(`/api/translation/${currentProcessingJob.translationId}/interrupt`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+        } catch (error) {
+            console.error('Error interrupting translation:', error);
+        }
+    }
+
+    // Collect file paths to delete from server
+    const uploadedFilePaths = filesToProcess
+        .filter(file => file.filePath)
+        .map(file => file.filePath);
+
+    // Clear client-side arrays and state
     filesToProcess = [];
     translationQueue = [];
     currentProcessingJob = null;
@@ -452,6 +471,32 @@ function resetFiles() {
     document.getElementById('statsGrid').style.display = '';
     updateProgress(0);
     showMessage('', '');
+    
+    // Delete uploaded files from server
+    if (uploadedFilePaths.length > 0) {
+        addLog(`🗑️ Deleting ${uploadedFilePaths.length} uploaded file(s) from server...`);
+        try {
+            const response = await fetch('/api/uploads/clear', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ file_paths: uploadedFilePaths })
+            });
+            
+            if (response.ok) {
+                const result = await response.json();
+                addLog(`✅ Successfully deleted ${result.total_deleted} uploaded file(s).`);
+                if (result.failed && result.failed.length > 0) {
+                    addLog(`⚠️ Failed to delete ${result.failed.length} file(s).`);
+                }
+            } else {
+                addLog("⚠️ Failed to delete some uploaded files from server.");
+            }
+        } catch (error) {
+            console.error('Error deleting uploaded files:', error);
+            addLog("⚠️ Error occurred while deleting uploaded files.");
+        }
+    }
+    
     addLog("Form and file list reset.");
 }
 
