@@ -387,6 +387,12 @@ body {
     cursor: pointer;
 }
 
+#selectAllFiles {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+}
+
 .file-actions {
     display: flex;
     gap: 10px;

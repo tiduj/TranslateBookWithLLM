@@ -832,13 +832,10 @@ function toggleFileSelection(filename) {
 
 function toggleSelectAll() {
     const checkboxes = document.querySelectorAll('.file-checkbox');
-    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
     const selectAllFiles = document.getElementById('selectAllFiles');
     
-    // Sync both checkboxes
-    const isChecked = selectAllCheckbox ? selectAllCheckbox.checked : selectAllFiles.checked;
-    if (selectAllCheckbox) selectAllCheckbox.checked = isChecked;
-    if (selectAllFiles) selectAllFiles.checked = isChecked;
+    // Use the Select All checkbox state
+    const isChecked = selectAllFiles.checked;
     
     checkboxes.forEach(checkbox => {
         checkbox.checked = isChecked;
