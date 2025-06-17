@@ -458,7 +458,8 @@ async function resetFiles() {
     updateFileDisplay();
 
     document.getElementById('progressSection').classList.add('hidden');
-    document.getElementById('logContainer').innerHTML = '';
+    // Don't clear the log automatically anymore
+    // document.getElementById('logContainer').innerHTML = '';
     document.getElementById('translateBtn').innerHTML = '▶️ Start Translation Batch';
     document.getElementById('translateBtn').disabled = true;
     document.getElementById('interruptBtn').classList.add('hidden');
@@ -559,7 +560,8 @@ async function startBatchTranslation() {
     document.getElementById('interruptBtn').classList.remove('hidden');
     document.getElementById('interruptBtn').disabled = false;
 
-    document.getElementById('logContainer').innerHTML = '';
+    // Don't clear the log when starting a new batch
+    // document.getElementById('logContainer').innerHTML = '';
 
     addLog(`🚀 Batch translation started for ${translationQueue.length} file(s).`);
     showMessage(`Batch of ${translationQueue.length} file(s) initiated.`, 'info');
@@ -586,7 +588,8 @@ async function processNextFileInQueue() {
     updateProgress(0);
     ['totalChunks', 'completedChunks', 'failedChunks'].forEach(id => document.getElementById(id).textContent = '0');
     document.getElementById('elapsedTime').textContent = '0s';
-    document.getElementById('logContainer').innerHTML = '';
+    // Don't clear the log when processing next file
+    // document.getElementById('logContainer').innerHTML = '';
 
     if (fileToTranslate.fileType === 'epub') {
         document.getElementById('statsGrid').style.display = 'none';
@@ -722,6 +725,11 @@ function updateProgress(percent) {
     const progressBar = document.getElementById('progressBar');
     progressBar.style.width = percent + '%';
     progressBar.textContent = Math.round(percent) + '%';
+}
+
+function clearActivityLog() {
+    document.getElementById('logContainer').innerHTML = '';
+    addLog('📝 Activity log cleared by user');
 }
 
 
