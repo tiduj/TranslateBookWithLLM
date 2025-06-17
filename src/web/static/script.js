@@ -709,4 +709,239 @@ window.addEventListener('DOMContentLoaded', function() {
             postProcessingOptions.style.display = 'none';
         }
     });
+    
+    // Load file list on page load
+    refreshFileList();
 });
+
+// File Management Functions
+let selectedFiles = new Set();
+
+async function refreshFileList() {
+    const loadingDiv = document.getElementById('fileListLoading');
+    const containerDiv = document.getElementById('fileManagementContainer');
+    const tableBody = document.getElementById('fileTableBody');
+    const emptyDiv = document.getElementById('fileListEmpty');
+    
+    loadingDiv.style.display = 'block';
+    containerDiv.style.display = 'none';
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/files`);
+        if (!response.ok) {
+            throw new Error('Failed to fetch file list');
+        }
+        
+        const data = await response.json();
+        
+        loadingDiv.style.display = 'none';
+        containerDiv.style.display = 'block';
+        
+        // Clear existing table rows
+        tableBody.innerHTML = '';
+        selectedFiles.clear();
+        updateFileSelectionButtons();
+        
+        if (data.files.length === 0) {
+            emptyDiv.style.display = 'block';
+            containerDiv.querySelector('.file-table').style.display = 'none';
+        } else {
+            emptyDiv.style.display = 'none';
+            containerDiv.querySelector('.file-table').style.display = 'table';
+            
+            // Populate table with files
+            data.files.forEach(file => {
+                const row = document.createElement('tr');
+                
+                // Format date
+                const modifiedDate = new Date(file.modified_date);
+                const formattedDate = modifiedDate.toLocaleString();
+                
+                // Determine file icon
+                const fileIcon = file.file_type === 'epub' ? '📚' : 
+                               file.file_type === 'srt' ? '🎬' : 
+                               file.file_type === 'txt' ? '📄' : '📎';
+                
+                row.innerHTML = `
+                    <td>
+                        <input type="checkbox" class="file-checkbox" data-filename="${file.filename}" onchange="toggleFileSelection('${file.filename}')">
+                    </td>
+                    <td>${fileIcon} ${file.filename}</td>
+                    <td>${file.file_type.toUpperCase()}</td>
+                    <td>${file.size_mb} MB</td>
+                    <td>${formattedDate}</td>
+                    <td style="text-align: center;">
+                        <button class="file-action-btn download" onclick="downloadSingleFile('${file.filename}')" title="Download">
+                            📥
+                        </button>
+                        <button class="file-action-btn delete" onclick="deleteSingleFile('${file.filename}')" title="Delete">
+                            🗑️
+                        </button>
+                    </td>
+                `;
+                
+                tableBody.appendChild(row);
+            });
+        }
+        
+        // Update totals
+        document.getElementById('totalFileCount').textContent = data.total_files;
+        document.getElementById('totalFileSize').textContent = `${data.total_size_mb} MB`;
+        
+    } catch (error) {
+        loadingDiv.style.display = 'none';
+        showMessage(`Error loading file list: ${error.message}`, 'error');
+    }
+}
+
+function toggleFileSelection(filename) {
+    if (selectedFiles.has(filename)) {
+        selectedFiles.delete(filename);
+    } else {
+        selectedFiles.add(filename);
+    }
+    updateFileSelectionButtons();
+}
+
+function toggleSelectAll() {
+    const checkboxes = document.querySelectorAll('.file-checkbox');
+    const selectAllCheckbox = document.getElementById('selectAllCheckbox');
+    const selectAllFiles = document.getElementById('selectAllFiles');
+    
+    // Sync both checkboxes
+    const isChecked = selectAllCheckbox ? selectAllCheckbox.checked : selectAllFiles.checked;
+    if (selectAllCheckbox) selectAllCheckbox.checked = isChecked;
+    if (selectAllFiles) selectAllFiles.checked = isChecked;
+    
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = isChecked;
+        const filename = checkbox.getAttribute('data-filename');
+        if (isChecked) {
+            selectedFiles.add(filename);
+        } else {
+            selectedFiles.delete(filename);
+        }
+    });
+    
+    updateFileSelectionButtons();
+}
+
+function updateFileSelectionButtons() {
+    const hasSelection = selectedFiles.size > 0;
+    document.getElementById('batchDownloadBtn').disabled = !hasSelection;
+    document.getElementById('batchDeleteBtn').disabled = !hasSelection;
+    
+    // Update button text with count
+    if (hasSelection) {
+        document.getElementById('batchDownloadBtn').innerHTML = `📥 Download Selected (${selectedFiles.size})`;
+        document.getElementById('batchDeleteBtn').innerHTML = `🗑️ Delete Selected (${selectedFiles.size})`;
+    } else {
+        document.getElementById('batchDownloadBtn').innerHTML = `📥 Download Selected`;
+        document.getElementById('batchDeleteBtn').innerHTML = `🗑️ Delete Selected`;
+    }
+}
+
+async function downloadSingleFile(filename) {
+    window.location.href = `${API_BASE_URL}/api/files/${encodeURIComponent(filename)}`;
+}
+
+async function deleteSingleFile(filename) {
+    if (!confirm(`Are you sure you want to delete "${filename}"?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/files/${encodeURIComponent(filename)}`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            showMessage(data.message, 'success');
+            refreshFileList();
+        } else {
+            showMessage(data.error || 'Failed to delete file', 'error');
+        }
+    } catch (error) {
+        showMessage(`Error deleting file: ${error.message}`, 'error');
+    }
+}
+
+async function downloadSelectedFiles() {
+    if (selectedFiles.size === 0) {
+        showMessage('No files selected for download', 'error');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/files/batch/download`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                filenames: Array.from(selectedFiles)
+            })
+        });
+        
+        if (response.ok) {
+            // Download the zip file
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = `translated_files_${new Date().getTime()}.zip`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            
+            showMessage(`Downloaded ${selectedFiles.size} files as zip`, 'success');
+        } else {
+            const data = await response.json();
+            showMessage(data.error || 'Failed to download files', 'error');
+        }
+    } catch (error) {
+        showMessage(`Error downloading files: ${error.message}`, 'error');
+    }
+}
+
+async function deleteSelectedFiles() {
+    if (selectedFiles.size === 0) {
+        showMessage('No files selected for deletion', 'error');
+        return;
+    }
+    
+    if (!confirm(`Are you sure you want to delete ${selectedFiles.size} file(s)?`)) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/files/batch/delete`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                filenames: Array.from(selectedFiles)
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            let message = `Deleted ${data.total_deleted} file(s)`;
+            if (data.failed.length > 0) {
+                message += `. Failed to delete ${data.failed.length} file(s)`;
+            }
+            showMessage(message, data.failed.length > 0 ? 'info' : 'success');
+            refreshFileList();
+        } else {
+            showMessage(data.error || 'Failed to delete files', 'error');
+        }
+    } catch (error) {
+        showMessage(`Error deleting files: ${error.message}`, 'error');
+    }
+}
