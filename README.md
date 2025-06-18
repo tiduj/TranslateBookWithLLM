@@ -263,6 +263,8 @@ The web interface provides easy access to:
   - **Timeout**: Request timeout in seconds (30-600)
   - **Context Window**: Model context size (1024-32768)
   - **Max Attempts**: Retry attempts for failed chunks (1-5)
+  - **Custom Instructions** (optional): Add specific translation guidelines or requirements
+  - **Enable Post-processing**: Improve translation quality with additional refinement
 
 ### Configuration Files
 
@@ -308,6 +310,52 @@ structured_prompt = f"""
 ```
 
 **Note:** The translation tags are defined in `config.py` and automatically used by the prompt generator.
+
+#### Custom Instructions Feature
+
+You can enhance translation quality by providing custom instructions through the web interface or API:
+
+**Web Interface:**
+- Add custom instructions in the "Custom Instructions" text field
+- Examples:
+  - "Maintain formal tone throughout the translation"
+  - "Keep technical terms in English"
+  - "Use Quebec French dialect"
+  - "Preserve marketing language and brand voice"
+
+**API Usage:**
+```json
+{
+  "custom_instructions": "Translate with a casual, conversational tone suitable for young adults"
+}
+```
+
+The custom instructions are automatically integrated into the translation prompt.
+
+#### Post-processing Feature
+
+Enable post-processing to improve translation quality through an additional refinement pass:
+
+**How it works:**
+1. Initial translation is performed as usual
+2. A second pass reviews and refines the translation
+3. The post-processor checks for:
+   - Grammar and fluency
+   - Consistency in terminology
+   - Natural language flow
+   - Cultural appropriateness
+
+**Web Interface:**
+- Toggle "Enable Post-processing" in advanced settings
+- Optionally add specific post-processing instructions
+
+**Post-processing Instructions Examples:**
+- "Ensure consistent use of formal pronouns"
+- "Check for gender agreement in French"
+- "Verify technical terminology accuracy"
+- "Improve readability for children"
+
+**Note:** Post-processing increases translation time but generally improves quality, especially for literary or professional texts.
 
 
 ## Troubleshooting
