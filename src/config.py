@@ -28,6 +28,10 @@ GEMINI_MODEL = os.getenv('GEMINI_MODEL', 'gemini-2.0-flash')
 SRT_LINES_PER_BLOCK = int(os.getenv('SRT_LINES_PER_BLOCK', '5'))
 SRT_MAX_CHARS_PER_BLOCK = int(os.getenv('SRT_MAX_CHARS_PER_BLOCK', '500'))
 
+# Default languages from environment
+DEFAULT_SOURCE_LANGUAGE = os.getenv('DEFAULT_SOURCE_LANGUAGE', 'English')
+DEFAULT_TARGET_LANGUAGE = os.getenv('DEFAULT_TARGET_LANGUAGE', 'French')
+
 # Translation tags
 TRANSLATE_TAG_IN = "<TRANSLATED>"
 TRANSLATE_TAG_OUT = "</TRANSLATED>"
@@ -69,8 +73,8 @@ class TranslationConfig:
     """Unified configuration for both CLI and web interfaces"""
     
     # Core settings
-    source_language: str = "English"
-    target_language: str = "French"
+    source_language: str = DEFAULT_SOURCE_LANGUAGE
+    target_language: str = DEFAULT_TARGET_LANGUAGE
     model: str = DEFAULT_MODEL
     api_endpoint: str = API_ENDPOINT
     
@@ -117,8 +121,8 @@ class TranslationConfig:
     def from_web_request(cls, request_data: dict) -> 'TranslationConfig':
         """Create config from web request data"""
         return cls(
-            source_language=request_data.get('source_language', 'English'),
-            target_language=request_data.get('target_language', 'French'),
+            source_language=request_data.get('source_language', DEFAULT_SOURCE_LANGUAGE),
+            target_language=request_data.get('target_language', DEFAULT_TARGET_LANGUAGE),
             model=request_data.get('model', DEFAULT_MODEL),
             api_endpoint=request_data.get('llm_api_endpoint', API_ENDPOINT),
             chunk_size=request_data.get('chunk_size', MAIN_LINES_PER_CHUNK),

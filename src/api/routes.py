@@ -17,7 +17,9 @@ from src.config import (
     REQUEST_TIMEOUT,
     OLLAMA_NUM_CTX,
     MAX_TRANSLATION_ATTEMPTS,
-    RETRY_DELAY_SECONDS
+    RETRY_DELAY_SECONDS,
+    DEFAULT_SOURCE_LANGUAGE,
+    DEFAULT_TARGET_LANGUAGE
 )
 
 
@@ -148,7 +150,9 @@ def configure_routes(app, active_translations, output_dir, start_translation_job
             "max_attempts": MAX_TRANSLATION_ATTEMPTS,
             "retry_delay": RETRY_DELAY_SECONDS,
             "supported_formats": ["txt", "epub", "srt"],
-            "gemini_api_key": gemini_api_key
+            "gemini_api_key": gemini_api_key,
+            "default_source_language": DEFAULT_SOURCE_LANGUAGE,
+            "default_target_language": DEFAULT_TARGET_LANGUAGE
         })
 
     @app.route('/api/translate', methods=['POST'])
