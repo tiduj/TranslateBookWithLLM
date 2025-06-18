@@ -7,6 +7,7 @@ import asyncio
 import tempfile
 import threading
 from datetime import datetime
+from pathlib import Path
 
 from src.core.epub_processor import translate_epub_file
 from src.utils.unified_logger import setup_web_logger, LogType
@@ -141,6 +142,14 @@ async def perform_actual_translation(translation_id, config, active_translations
         
         input_path_for_translate_module = config.get('file_path')
         
+        # Debug logging for file paths
+        if input_path_for_translate_module:
+            _log_message_callback("debug_input_path", f"🔍 Input file path: {input_path_for_translate_module}")
+            input_path_obj = Path(input_path_for_translate_module)
+            if input_path_obj.exists():
+                _log_message_callback("debug_input_resolved", f"🔍 Resolved path: {input_path_obj.resolve()}")
+                _log_message_callback("debug_parent_dir", f"🔍 Parent directory: {input_path_obj.parent.name}")
+        
         if config['file_type'] == 'epub':
             if not input_path_for_translate_module:
                 _log_message_callback("epub_error_no_path", "❌ EPUB translation requires a file path from upload.")
@@ -235,6 +244,14 @@ async def perform_actual_translation(translation_id, config, active_translations
 
         _log_message_callback("save_process_info", f"💾 Translation process ended. File saved (or partially saved) at: {output_filepath_on_server}")
         active_translations[translation_id]['output_filepath'] = output_filepath_on_server
+        
+        # Log debug info about uploaded file path for troubleshooting
+        if 'file_path' in config and config['file_path']:
+            _log_message_callback("debug_file_path", f"🔍 Debug - Uploaded file path: {config['file_path']}")
+            upload_path = Path(config['file_path'])
+            if upload_path.exists():
+                _log_message_callback("debug_file_exists", f"🔍 Debug - File exists at: {upload_path.resolve()}")
+                _log_message_callback("debug_path_parts", f"🔍 Debug - Path parts: {upload_path.resolve().parts}")
 
         elapsed_time = time.time() - active_translations[translation_id]['stats'].get('start_time', time.time())
         _update_translation_stats_callback({'elapsed_time': elapsed_time})
@@ -250,6 +267,49 @@ async def perform_actual_translation(translation_id, config, active_translations
             _log_message_callback("summary_interrupted", f"🛑 Translation interrupted by user. Partial result saved. Time: {elapsed_time:.2f}s.")
             final_status_payload['status'] = 'interrupted'
             final_status_payload['progress'] = active_translations[translation_id].get('progress', 0)
+            
+            # Also clean up uploaded file on interruption if translation produced output
+            if 'file_path' in config and config['file_path'] and os.path.exists(output_filepath_on_server):
+                uploaded_file_path = config['file_path']
+                # Convert to Path object for reliable path operations
+                upload_path = Path(uploaded_file_path)
+                
+                # Check if file exists
+                if upload_path.exists():
+                    # Check if it's in the uploads directory (to avoid deleting user's original files)
+                    # Use Path operations to handle cross-platform path separators
+                    try:
+                        # Get the absolute path and check if 'uploads' is in the path parts
+                        resolved_path = upload_path.resolve()
+                        path_parts = resolved_path.parts
+                        
+                        # Log path parts for debugging
+                        _log_message_callback("cleanup_path_parts", f"📋 Path parts: {path_parts}")
+                        _log_message_callback("cleanup_parent_name", f"📋 Parent directory name: {resolved_path.parent.name}")
+                        
+                        # Check both: if 'uploads' is in path parts OR if parent directory is 'uploads'
+                        is_in_uploads = 'uploads' in path_parts or resolved_path.parent.name == 'uploads'
+                        
+                        # Additional safety check: ensure the file is within the translated_files/uploads directory
+                        uploads_dir = Path(output_dir) / 'uploads'
+                        _log_message_callback("cleanup_uploads_dir", f"📋 Expected uploads directory: {uploads_dir}")
+                        
+                        try:
+                            # Check if the file is within the uploads directory
+                            resolved_path.relative_to(uploads_dir.resolve())
+                            is_in_uploads = True
+                            _log_message_callback("cleanup_check", f"🔍 File is confirmed to be in uploads directory")
+                        except ValueError:
+                            # File is not in the uploads directory
+                            _log_message_callback("cleanup_check", f"🔍 File is NOT in uploads directory (relative_to check failed)")
+                        
+                        if is_in_uploads:
+                            upload_path.unlink()  # More reliable than os.remove
+                            _log_message_callback("cleanup_uploaded_file", f"🗑️ Cleaned up uploaded source file: {upload_path.name}")
+                        else:
+                            _log_message_callback("cleanup_skipped", f"ℹ️ Skipped cleanup - file not in uploads directory: {upload_path.name}")
+                    except Exception as e:
+                        _log_message_callback("cleanup_error", f"⚠️ Could not delete uploaded file {upload_path.name}: {str(e)}")
 
         elif active_translations[translation_id].get('status') != 'error':
             active_translations[translation_id]['status'] = 'completed'
@@ -257,6 +317,53 @@ async def perform_actual_translation(translation_id, config, active_translations
             final_status_payload['status'] = 'completed'
             _update_translation_progress_callback(100)
             final_status_payload['progress'] = 100
+            
+            # Clean up uploaded file if it exists and is in the uploads directory
+            _log_message_callback("cleanup_start", f"🧹 Starting cleanup check...")
+            if 'file_path' in config and config['file_path']:
+                _log_message_callback("cleanup_filepath", f"📁 File path in config: {config['file_path']}")
+                uploaded_file_path = config['file_path']
+                # Convert to Path object for reliable path operations
+                upload_path = Path(uploaded_file_path)
+                
+                # Check if file exists
+                if upload_path.exists():
+                    # Check if it's in the uploads directory (to avoid deleting user's original files)
+                    # Use Path operations to handle cross-platform path separators
+                    try:
+                        # Get the absolute path and check if 'uploads' is in the path parts
+                        resolved_path = upload_path.resolve()
+                        path_parts = resolved_path.parts
+                        
+                        # Log path parts for debugging
+                        _log_message_callback("cleanup_path_parts", f"📋 Path parts: {path_parts}")
+                        _log_message_callback("cleanup_parent_name", f"📋 Parent directory name: {resolved_path.parent.name}")
+                        
+                        # Check both: if 'uploads' is in path parts OR if parent directory is 'uploads'
+                        is_in_uploads = 'uploads' in path_parts or resolved_path.parent.name == 'uploads'
+                        
+                        # Additional safety check: ensure the file is within the translated_files/uploads directory
+                        uploads_dir = Path(output_dir) / 'uploads'
+                        _log_message_callback("cleanup_uploads_dir", f"📋 Expected uploads directory: {uploads_dir}")
+                        
+                        try:
+                            # Check if the file is within the uploads directory
+                            resolved_path.relative_to(uploads_dir.resolve())
+                            is_in_uploads = True
+                            _log_message_callback("cleanup_check", f"🔍 File is confirmed to be in uploads directory")
+                        except ValueError:
+                            # File is not in the uploads directory
+                            _log_message_callback("cleanup_check", f"🔍 File is NOT in uploads directory (relative_to check failed)")
+                        
+                        if is_in_uploads:
+                            upload_path.unlink()  # More reliable than os.remove
+                            _log_message_callback("cleanup_uploaded_file", f"🗑️ Cleaned up uploaded source file: {upload_path.name}")
+                        else:
+                            _log_message_callback("cleanup_skipped", f"ℹ️ Skipped cleanup - file not in uploads directory: {upload_path.name}")
+                    except Exception as e:
+                        _log_message_callback("cleanup_error", f"⚠️ Could not delete uploaded file {upload_path.name}: {str(e)}")
+            else:
+                _log_message_callback("cleanup_no_filepath", f"📂 No file_path in config for cleanup")
         else:
             _log_message_callback("summary_error_final", f"❌ Translation finished with errors. Time: {elapsed_time:.2f}s.")
             final_status_payload['status'] = 'error'

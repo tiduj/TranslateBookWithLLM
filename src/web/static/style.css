@@ -341,3 +341,102 @@ body {
 #apiEndpoint {
     word-break: break-all; /* Allow breaking long URLs */
 }
+
+/* File Management Styles */
+.file-table {
+    width: 100%;
+    border-collapse: collapse;
+    background: #1A1A1A;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
+.file-table thead tr {
+    background: #2A2A2A !important;
+    border-bottom: 2px solid #333333;
+}
+
+.file-table th {
+    padding: 12px;
+    text-align: left;
+    color: #79CDDE;
+    font-weight: 600;
+}
+
+.file-table tbody tr {
+    border-bottom: 1px solid #333333;
+    transition: background 0.2s;
+}
+
+.file-table tbody tr:hover {
+    background: #252525;
+}
+
+.file-table tbody tr:last-child {
+    border-bottom: none;
+}
+
+.file-table td {
+    padding: 12px;
+    color: #E0E6E9;
+}
+
+.file-table .file-checkbox {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+}
+
+#selectAllFiles {
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+}
+
+.file-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.file-action-btn {
+    padding: 6px 12px;
+    border: 1px solid #333333;
+    background: #2A2A2A;
+    color: #E0E6E9;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+.file-action-btn:hover {
+    background: #3A3A3A;
+    border-color: #79CDDE;
+}
+
+.file-action-btn.download {
+    color: #79CDDE;
+}
+
+.file-action-btn.delete {
+    color: #FF6B6B;
+}
+
+#fileListEmpty {
+    padding: 60px 20px;
+    text-align: center;
+    color: #6B7280;
+}
+
+#fileListLoading {
+    padding: 40px;
+    text-align: center;
+    color: #A3ADB3;
+}
+
+.card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
