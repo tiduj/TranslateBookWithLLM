@@ -143,7 +143,7 @@ def generate_subtitle_block_prompt(subtitle_blocks, previous_translation_block,
 
 def generate_post_processing_prompt(translated_text, target_language="French", 
                                   translate_tag_in=TRANSLATE_TAG_IN, translate_tag_out=TRANSLATE_TAG_OUT,
-                                  custom_instructions=""):
+                                  custom_instructions="", context_before="", context_after=""):
     """
     Generate the post-processing prompt to improve translated text quality.
     
@@ -152,6 +152,8 @@ def generate_post_processing_prompt(translated_text, target_language="French",
         target_language: Target language for the text
         translate_tag_in/out: Tags for marking the improved text
         custom_instructions: Additional improvement instructions
+        context_before: Translated context before this text
+        context_after: Translated context after this text
         
     Returns:
         str: The complete prompt formatted for post-processing
@@ -167,6 +169,7 @@ def generate_post_processing_prompt(translated_text, target_language="French",
 + Correct any grammatical errors or awkward phrasing
 + Ensure consistency in style and tone
 + Make the text read as if originally written in {target_language}
++ Consider the surrounding context to ensure smooth transitions
 
 ## FORMATTING
 + Review ONLY the text enclosed within the tags "{INPUT_TAG_IN}" and "{INPUT_TAG_OUT}"
@@ -185,6 +188,24 @@ def generate_post_processing_prompt(translated_text, target_language="French",
 
 """
 
+    # Add context before if provided
+    context_before_block = ""
+    if context_before and context_before.strip():
+        context_before_block = f"""
+## PREVIOUS CONTEXT (for consistency):
+(...) {context_before}
+
+"""
+
+    # Add context after if provided
+    context_after_block = ""
+    if context_after and context_after.strip():
+        context_after_block = f"""
+## FOLLOWING CONTEXT (for smooth transition):
+{context_after} (...)
+
+"""
+
     text_to_improve_block = f"""
 {INPUT_TAG_IN}
 {translated_text}
@@ -193,6 +214,8 @@ def generate_post_processing_prompt(translated_text, target_language="French",
     structured_prompt_parts = [
         role_and_instructions_block,
         custom_instructions_block,
+        context_before_block,
+        context_after_block,
         text_to_improve_block
     ]
     
