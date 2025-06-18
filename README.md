@@ -321,14 +321,6 @@ You can enhance translation quality by providing custom instructions through the
   - "Maintain formal tone throughout the translation"
   - "Keep technical terms in English"
   - "Use Quebec French dialect"
-  - "Preserve marketing language and brand voice"
-
-**API Usage:**
-```json
-{
-  "custom_instructions": "Translate with a casual, conversational tone suitable for young adults"
-}
-```
 
 The custom instructions are automatically integrated into the translation prompt.
 
