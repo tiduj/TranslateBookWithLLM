@@ -5,7 +5,7 @@ import os
 import argparse
 import asyncio
 
-from src.config import DEFAULT_MODEL, MAIN_LINES_PER_CHUNK, API_ENDPOINT, LLM_PROVIDER, GEMINI_API_KEY
+from src.config import DEFAULT_MODEL, MAIN_LINES_PER_CHUNK, API_ENDPOINT, LLM_PROVIDER, GEMINI_API_KEY, DEFAULT_SOURCE_LANGUAGE, DEFAULT_TARGET_LANGUAGE
 from src.utils.file_utils import translate_file
 from src.utils.unified_logger import setup_cli_logger, LogType
 
@@ -14,8 +14,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Translate a text, EPUB or SRT file using an LLM.")
     parser.add_argument("-i", "--input", required=True, help="Path to the input file (text, EPUB, or SRT).")
     parser.add_argument("-o", "--output", default=None, help="Path to the output file. If not specified, uses input filename with suffix.")
-    parser.add_argument("-sl", "--source_lang", default="English", help="Source language (default: English).")
-    parser.add_argument("-tl", "--target_lang", default="French", help="Target language (default: French).")
+    parser.add_argument("-sl", "--source_lang", default=DEFAULT_SOURCE_LANGUAGE, help=f"Source language (default: {DEFAULT_SOURCE_LANGUAGE}).")
+    parser.add_argument("-tl", "--target_lang", default=DEFAULT_TARGET_LANGUAGE, help=f"Target language (default: {DEFAULT_TARGET_LANGUAGE}).")
     parser.add_argument("-m", "--model", default=DEFAULT_MODEL, help=f"LLM model (default: {DEFAULT_MODEL}).")
     parser.add_argument("-cs", "--chunksize", type=int, default=MAIN_LINES_PER_CHUNK, help=f"Target lines per chunk (default: {MAIN_LINES_PER_CHUNK}).")
     parser.add_argument("--api_endpoint", default=API_ENDPOINT, help=f"Ollama API endpoint (default: {API_ENDPOINT}).")

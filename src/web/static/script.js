@@ -709,4 +709,61 @@ window.addEventListener('DOMContentLoaded', function() {
             postProcessingOptions.style.display = 'none';
         }
     });
+    
+    // Load default configuration including languages
+    loadDefaultConfig();
 });
+
+async function loadDefaultConfig() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/api/config`);
+        if (response.ok) {
+            const config = await response.json();
+            
+            // Set default languages
+            if (config.default_source_language) {
+                setDefaultLanguage('sourceLang', 'customSourceLang', config.default_source_language);
+            }
+            if (config.default_target_language) {
+                setDefaultLanguage('targetLang', 'customTargetLang', config.default_target_language);
+            }
+            
+            // Set other configuration values
+            if (config.api_endpoint) document.getElementById('apiEndpoint').value = config.api_endpoint;
+            if (config.chunk_size) document.getElementById('chunkSize').value = config.chunk_size;
+            if (config.timeout) document.getElementById('timeout').value = config.timeout;
+            if (config.context_window) document.getElementById('contextWindow').value = config.context_window;
+            if (config.max_attempts) document.getElementById('maxAttempts').value = config.max_attempts;
+            if (config.retry_delay) document.getElementById('retryDelay').value = config.retry_delay;
+            if (config.gemini_api_key) document.getElementById('geminiApiKey').value = config.gemini_api_key;
+            
+            // Load available models after setting configuration
+            loadAvailableModels();
+        }
+    } catch (error) {
+        console.error('Error loading default configuration:', error);
+    }
+}
+
+function setDefaultLanguage(selectId, customInputId, defaultLanguage) {
+    const select = document.getElementById(selectId);
+    const customInput = document.getElementById(customInputId);
+    
+    // Check if the default language is in the dropdown options
+    let languageFound = false;
+    for (let option of select.options) {
+        if (option.value.toLowerCase() === defaultLanguage.toLowerCase()) {
+            select.value = option.value;
+            languageFound = true;
+            customInput.style.display = 'none';
+            break;
+        }
+    }
+    
+    // If language not found in dropdown, use "Other" and set custom input
+    if (!languageFound) {
+        select.value = 'Other';
+        customInput.value = defaultLanguage;
+        customInput.style.display = 'block';
+    }
+}
