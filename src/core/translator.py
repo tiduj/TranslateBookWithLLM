@@ -149,8 +149,7 @@ async def generate_translation_request(main_content, context_before, context_aft
 
 
 async def post_process_translation(translated_text, target_language="French", model=DEFAULT_MODEL,
-                                 llm_client=None, log_callback=None, custom_instructions="",
-                                 context_before="", context_after=""):
+                                 llm_client=None, log_callback=None, custom_instructions=""):
     """
     Post-process translated text to improve quality
     
@@ -161,8 +160,6 @@ async def post_process_translation(translated_text, target_language="French", mo
         llm_client: LLM client instance
         log_callback (callable): Logging callback function
         custom_instructions (str): Additional improvement instructions
-        context_before (str): Translated context before this text
-        context_after (str): Translated context after this text
         
     Returns:
         str: Improved text or original if post-processing fails
@@ -174,9 +171,7 @@ async def post_process_translation(translated_text, target_language="French", mo
     structured_prompt = generate_post_processing_prompt(
         translated_text,
         target_language,
-        custom_instructions=custom_instructions,
-        context_before=context_before,
-        context_after=context_after
+        custom_instructions=custom_instructions
     )
     
     print("\n-------POST-PROCESSING SENT to LLM-------")
@@ -294,34 +289,13 @@ async def translate_chunks(chunks, source_language, target_language, model_name,
                 if log_callback:
                     log_callback("post_processing_chunk", f"Post-processing chunk {i+1}/{total_chunks}")
                 
-                # Get context for post-processing
-                pp_context_before = ""
-                pp_context_after = ""
-                
-                # Get translated context before (from previous chunks)
-                if i > 0 and full_translation_parts:
-                    # Get last 150 words from previous translations
-                    prev_text = " ".join(full_translation_parts[-min(3, len(full_translation_parts)):])
-                    words = prev_text.split()
-                    if len(words) > 150:
-                        pp_context_before = " ".join(words[-150:])
-                    else:
-                        pp_context_before = prev_text
-                
-                # Get translated context after (look ahead in remaining chunks)
-                if i + 1 < len(chunks):
-                    next_chunk = chunks[i + 1]
-                    pp_context_after = next_chunk.get("main_content", "")[:500]  # First 500 chars of next chunk
-                
                 improved_text = await post_process_translation(
                     translated_chunk_text,
                     target_language,
                     model_name,
                     llm_client=llm_client,
                     log_callback=log_callback,
-                    custom_instructions=post_processing_instructions,
-                    context_before=pp_context_before,
-                    context_after=pp_context_after
+                    custom_instructions=post_processing_instructions
                 )
                 translated_chunk_text = improved_text
             else:
@@ -439,27 +413,13 @@ async def translate_subtitles(subtitles: List[Dict[str, str]], source_language: 
                 if log_callback:
                     log_callback("post_processing_subtitle", f"Post-processing subtitle {idx+1}")
                 
-                # Get context for post-processing
-                pp_context_before = ""
-                pp_context_after = ""
-                
-                # Get previous translated subtitle as context
-                if idx > 0 and idx-1 in translations:
-                    pp_context_before = translations[idx-1]
-                
-                # Get next subtitle text as context (not yet translated)
-                if idx < len(subtitles) - 1:
-                    pp_context_after = subtitles[idx+1].get('text', '')
-                
                 improved_text = await post_process_translation(
                     translated_text,
                     target_language,
                     model_name,
                     llm_client=llm_client,
                     log_callback=log_callback,
-                    custom_instructions=post_processing_instructions,
-                    context_before=pp_context_before,
-                    context_after=pp_context_after
+                    custom_instructions=post_processing_instructions
                 )
                 translated_text = improved_text
             
@@ -605,41 +565,13 @@ async def translate_subtitles_in_blocks(subtitle_blocks: List[List[Dict[str, str
                     if log_callback:
                         log_callback("post_processing_subtitle", f"Post-processing subtitle {idx+1}")
                     
-                    # Get context for post-processing
-                    pp_context_before = ""
-                    pp_context_after = ""
-                    
-                    # Get previous translated subtitle as context
-                    if idx > 0:
-                        # Check if previous subtitle is in current block translations
-                        if idx-1 in block_translations:
-                            pp_context_before = block_translations[idx-1]
-                        # Otherwise check if it was translated in a previous block
-                        elif idx-1 in translations:
-                            pp_context_before = translations[idx-1]
-                    
-                    # Get next subtitle as context (within current block)
-                    if idx+1 in block_translations:
-                        pp_context_after = block_translations[idx+1]
-                    else:
-                        # Look for next subtitle in the original subtitles
-                        for subtitle in subtitle_blocks[block_idx:]:
-                            for sub in subtitle:
-                                if int(sub['number']) - 1 == idx + 1:
-                                    pp_context_after = sub['text']
-                                    break
-                            if pp_context_after:
-                                break
-                    
                     improved_text = await post_process_translation(
                         trans_text,
                         target_language,
                         model_name,
                         llm_client=llm_client,
                         log_callback=log_callback,
-                        custom_instructions=post_processing_instructions,
-                        context_before=pp_context_before,
-                        context_after=pp_context_after
+                        custom_instructions=post_processing_instructions
                     )
                     block_translations[idx] = improved_text
             
