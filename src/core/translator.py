@@ -11,6 +11,7 @@ from src.config import (
 )
 from prompts import generate_translation_prompt, generate_subtitle_block_prompt, generate_post_processing_prompt
 from .llm_client import default_client, LLMClient
+from .post_processor import clean_translated_text
 from typing import List, Dict, Tuple, Optional
 
 
@@ -199,7 +200,9 @@ async def post_process_translation(translated_text, target_language="French", mo
     improved_text = client.extract_translation(full_raw_response)
     
     if improved_text:
-        return _clean_html_entities(improved_text)
+        # Apply post-processor cleaning
+        cleaned_text = clean_translated_text(improved_text)
+        return cleaned_text
     else:
         warn_msg = "WARNING: Post-processing tags missing in LLM response. Using original."
         if log_callback:
@@ -295,6 +298,9 @@ async def translate_chunks(chunks, source_language, target_language, model_name,
                     custom_instructions=post_processing_instructions
                 )
                 translated_chunk_text = improved_text
+            else:
+                # Always apply basic cleaning even without post-processing
+                translated_chunk_text = clean_translated_text(translated_chunk_text)
             
             full_translation_parts.append(translated_chunk_text)
             completed_chunks_count += 1
