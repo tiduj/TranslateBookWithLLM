@@ -74,11 +74,8 @@ git clone https://github.com/hydropix/TranslateBookWithLLM.git .
 # Ensure environment is active
 conda activate translate_book_env
 
-# Install web interface dependencies (recommended)
-pip install flask flask-cors flask-socketio python-socketio requests tqdm httpx lxml python-dotenv
-
-# Or install minimal dependencies for CLI only
-pip install requests tqdm python-dotenv
+# Install dependencies
+pip install -r requirements.txt
 ```
 
 -----
