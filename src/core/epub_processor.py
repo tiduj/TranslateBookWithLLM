@@ -5,6 +5,7 @@ import os
 import zipfile
 import tempfile
 import html
+import aiofiles
 from lxml import etree
 from tqdm.auto import tqdm
 
@@ -640,8 +641,8 @@ async def translate_epub_file(input_filepath, output_filepath,
                     continue
                 
                 try:
-                    with open(file_path_abs, 'r', encoding='utf-8') as f_chap:
-                        chap_str_content = f_chap.read()
+                    async with aiofiles.open(file_path_abs, 'r', encoding='utf-8') as f_chap:
+                        chap_str_content = await f_chap.read()
 
                     parser = etree.XMLParser(encoding='utf-8', recover=True, remove_blank_text=False)
                     doc_chap_root = etree.fromstring(chap_str_content.encode('utf-8'), parser)
@@ -817,8 +818,8 @@ async def translate_epub_file(input_filepath, output_filepath,
                         if element.tail:
                             element.tail = clean_residual_tag_placeholders(element.tail)
                     
-                    with open(file_path_abs, 'wb') as f_out:
-                        f_out.write(etree.tostring(doc_root, encoding='utf-8', xml_declaration=True, pretty_print=True, method='xml'))
+                    async with aiofiles.open(file_path_abs, 'wb') as f_out:
+                        await f_out.write(etree.tostring(doc_root, encoding='utf-8', xml_declaration=True, pretty_print=True, method='xml'))
                 except Exception as e_write:
                     err_msg_write = f"ERROR writing modified EPUB file '{file_path_abs}': {e_write}"
                     if log_callback: 
