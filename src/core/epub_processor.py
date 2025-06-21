@@ -14,6 +14,7 @@ from src.config import (
 )
 from .text_processor import split_text_into_chunks_with_context
 from .translator import generate_translation_request, post_process_translation
+from .post_processor import clean_residual_tag_placeholders
 import re
 import hashlib
 import json
@@ -808,6 +809,14 @@ async def translate_epub_file(input_filepath, output_filepath,
             # Save XHTML files
             for file_path_abs, doc_root in parsed_xhtml_docs.items():
                 try:
+                    # Clean any residual TAG placeholders in the final document
+                    # This is done as a final step to ensure all placeholders are removed
+                    for element in doc_root.iter():
+                        if element.text:
+                            element.text = clean_residual_tag_placeholders(element.text)
+                        if element.tail:
+                            element.tail = clean_residual_tag_placeholders(element.tail)
+                    
                     with open(file_path_abs, 'wb') as f_out:
                         f_out.write(etree.tostring(doc_root, encoding='utf-8', xml_declaration=True, pretty_print=True, method='xml'))
                 except Exception as e_write:
