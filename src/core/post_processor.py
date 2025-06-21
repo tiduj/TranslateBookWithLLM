@@ -22,23 +22,6 @@ class PostProcessingRule(ABC):
         pass
 
 
-class RemoveTagMarkersRule(PostProcessingRule):
-    """Remove TAG markers and square brackets from translated text"""
-    
-    def apply(self, text: str) -> str:
-        # Remove [[TAG1]], [[TAG2]], etc.
-        text = re.sub(r'\[\[TAG\d+\]\]', '', text)
-        
-        # Remove TAG followed by number (e.g., TAG1, TAG2)
-        text = re.sub(r'TAG\d+', '', text)
-        
-        # Remove orphaned square brackets [[ or ]]
-        text = re.sub(r'\[\[|\]\]', '', text)
-        
-        return text
-    
-    def description(self) -> str:
-        return "Remove TAG markers and square brackets"
 
 
 class RemoveExtraWhitespaceRule(PostProcessingRule):
@@ -98,7 +81,6 @@ class PostProcessor:
     
     def _initialize_default_rules(self):
         """Add default cleaning rules"""
-        self.add_rule(RemoveTagMarkersRule())
         self.add_rule(HTMLEntityCleanupRule())
         self.add_rule(RemoveExtraWhitespaceRule())
     
@@ -180,9 +162,8 @@ class CustomPunctuationRule(PostProcessingRule):
 if __name__ == "__main__":
     # Test the post-processor
     test_text = """
-    This is [[TAG1]] a test text with TAG2 markers.
-    It also has  [[TAG3]]  extra   spaces and &nbsp;&nbsp; HTML entities.
-    Some orphaned ]] brackets [[ might appear.
+    This is a test text.
+    It also has    extra   spaces and &nbsp;&nbsp; HTML entities.
     """
     
     print("Original text:")
