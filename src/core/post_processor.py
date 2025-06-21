@@ -22,6 +22,31 @@ class PostProcessingRule(ABC):
         pass
 
 
+class RemoveResidualTagPlaceholdersRule(PostProcessingRule):
+    """Remove residual TAG placeholders that might remain after tag restoration"""
+    
+    def apply(self, text: str) -> str:
+        # Remove ⟦TAG0⟧, ⟦TAG1⟧, etc. (using the special Unicode brackets)
+        text = re.sub(r'⟦TAG\d+⟧', '', text)
+        
+        # Also remove [[TAG0]], [[TAG1]], etc. in case some got converted
+        text = re.sub(r'\[\[TAG\d+\]\]', '', text)
+        
+        # Remove TAG followed by number (e.g., TAG1, TAG2)
+        text = re.sub(r'TAG\d+', '', text)
+        
+        # Remove orphaned square brackets [[ or ]]
+        text = re.sub(r'\[\[|\]\]', '', text)
+        
+        # Remove orphaned special brackets ⟦ or ⟧
+        text = re.sub(r'⟦|⟧', '', text)
+        
+        return text
+    
+    def description(self) -> str:
+        return "Remove residual TAG placeholders after restoration"
+
+
 
 
 class RemoveExtraWhitespaceRule(PostProcessingRule):
@@ -141,6 +166,21 @@ def clean_translated_text(text: str, verbose: bool = False) -> str:
         The cleaned text
     """
     return default_post_processor.process(text, verbose)
+
+
+def clean_residual_tag_placeholders(text: str) -> str:
+    """
+    Clean up any residual TAG placeholders after tag restoration
+    This should be used as a final step before saving EPUB files
+    
+    Args:
+        text: The text to clean
+        
+    Returns:
+        The cleaned text without residual placeholders
+    """
+    cleaner = RemoveResidualTagPlaceholdersRule()
+    return cleaner.apply(text)
 
 
 # Example of how to create a custom rule:
