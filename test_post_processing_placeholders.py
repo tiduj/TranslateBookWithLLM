@@ -13,6 +13,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from src.core.translator import post_process_translation
 from src.core.epub_processor import TagPreserver
 from src.core.llm_client import LLMClient
+from src.config import TRANSLATE_TAG_IN, TRANSLATE_TAG_OUT, INPUT_TAG_IN, INPUT_TAG_OUT
 
 
 class MockLLMClient(LLMClient):
@@ -26,13 +27,13 @@ class MockLLMClient(LLMClient):
         """Simulate LLM response"""
         # Extract the text between INPUT tags from prompt
         import re
-        input_match = re.search(r'<INPUT>(.*?)</INPUT>', prompt, re.DOTALL)
+        input_match = re.search(rf'{re.escape(INPUT_TAG_IN)}(.*?){re.escape(INPUT_TAG_OUT)}', prompt, re.DOTALL)
         if input_match:
             input_text = input_match.group(1).strip()
             # Check if the prompt mentions preserving placeholders
             if "preserve ALL placeholder tags" in prompt:
                 # Return the input with placeholders preserved
-                return f"<TRANSLATED>{input_text}</TRANSLATED>"
+                return f"{TRANSLATE_TAG_IN}{input_text}{TRANSLATE_TAG_OUT}"
             else:
                 # Return the configured response
                 return self.response_text
@@ -41,7 +42,7 @@ class MockLLMClient(LLMClient):
     def extract_translation(self, response):
         """Extract translation from response"""
         import re
-        match = re.search(r'<TRANSLATED>(.*?)</TRANSLATED>', response, re.DOTALL)
+        match = re.search(rf'{re.escape(TRANSLATE_TAG_IN)}(.*?){re.escape(TRANSLATE_TAG_OUT)}', response, re.DOTALL)
         if match:
             return match.group(1).strip()
         return None
@@ -66,7 +67,7 @@ async def test_post_processing_preserves_placeholders():
     print(f"\nOriginal translated text: {translated_text}")
     
     # Mock client that returns improved text with placeholders preserved
-    mock_response = "<TRANSLATED>⟦TAG0⟧Salut ⟦TAG2⟧le monde⟦TAG3⟧ !⟦TAG1⟧</TRANSLATED>"
+    mock_response = f"{TRANSLATE_TAG_IN}⟦TAG0⟧Salut ⟦TAG2⟧le monde⟦TAG3⟧ !⟦TAG1⟧{TRANSLATE_TAG_OUT}"
     mock_client = MockLLMClient(mock_response)
     
     improved_text = await post_process_translation(
@@ -102,7 +103,7 @@ async def test_post_processing_with_missing_placeholders():
     translated_text = "⟦TAG0⟧Hello ⟦TAG2⟧world⟦TAG3⟧!⟦TAG1⟧"
     
     # Mock client that returns text with missing placeholders
-    mock_response = "<TRANSLATED>⟦TAG0⟧Hello world!⟦TAG1⟧</TRANSLATED>"  # Missing TAG2 and TAG3
+    mock_response = f"{TRANSLATE_TAG_IN}⟦TAG0⟧Hello world!⟦TAG1⟧{TRANSLATE_TAG_OUT}"  # Missing TAG2 and TAG3
     mock_client = MockLLMClient(mock_response)
     
     print(f"Original text: {translated_text}")
@@ -137,7 +138,7 @@ async def test_post_processing_with_mutated_placeholders():
     translated_text = "⟦TAG0⟧Ceci est ⟦TAG2⟧important⟦TAG3⟧.⟦TAG1⟧"
     
     # Mock client that returns text with mutated placeholders
-    mock_response = "<TRANSLATED>[[TAG0]]C'est [[TAG2]]très important[[TAG3]].[[TAG1]]</TRANSLATED>"
+    mock_response = f"{TRANSLATE_TAG_IN}[[TAG0]]C'est [[TAG2]]très important[[TAG3]].[[TAG1]]{TRANSLATE_TAG_OUT}"
     mock_client = MockLLMClient(mock_response)
     
     print(f"Original text: {translated_text}")
@@ -186,7 +187,7 @@ async def test_complete_flow():
     print(f"3. After translation: {translated_with_placeholders}")
     
     # Simulate post-processing
-    mock_response = "<TRANSLATED>⟦TAG0⟧Ceci est un texte ⟦TAG1⟧très important⟦TAG2⟧.⟦TAG3⟧</TRANSLATED>"
+    mock_response = f"{TRANSLATE_TAG_IN}⟦TAG0⟧Ceci est un texte ⟦TAG1⟧très important⟦TAG2⟧.⟦TAG3⟧{TRANSLATE_TAG_OUT}"
     mock_client = MockLLMClient(mock_response)
     
     improved_text = await post_process_translation(

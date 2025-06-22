@@ -94,3 +94,24 @@ class LLMClient:
 
 # Global instance for backward compatibility
 default_client = LLMClient(provider_type="ollama", api_endpoint=API_ENDPOINT, model=DEFAULT_MODEL)
+
+
+def create_llm_client(llm_provider: str, gemini_api_key: Optional[str], 
+                      api_endpoint: str, model_name: str) -> Optional[LLMClient]:
+    """
+    Factory function to create LLM client based on provider or custom endpoint
+    
+    Args:
+        llm_provider: Provider type ('ollama' or 'gemini')
+        gemini_api_key: API key for Gemini provider
+        api_endpoint: API endpoint for custom Ollama instance
+        model_name: Model name to use
+        
+    Returns:
+        LLMClient instance or None if using default client
+    """
+    if llm_provider == "gemini" and gemini_api_key:
+        return LLMClient(provider_type="gemini", api_key=gemini_api_key, model=model_name)
+    elif api_endpoint and api_endpoint != default_client.api_endpoint:
+        return LLMClient(provider_type="ollama", api_endpoint=api_endpoint, model=model_name)
+    return None
