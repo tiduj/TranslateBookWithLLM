@@ -319,8 +319,8 @@ async def translate_chunks(chunks, source_language, target_language, model_name,
                 full_translation_parts.append(translated_chunk_text)
                 completed_chunks_count += 1
                 words = translated_chunk_text.split()
-                if len(words) > 150:
-                    last_successful_llm_context = " ".join(words[-150:])
+                if len(words) > 25:
+                    last_successful_llm_context = " ".join(words[-25:])
                 else:
                     last_successful_llm_context = translated_chunk_text
             else:

@@ -864,13 +864,13 @@ async def translate_epub_file(input_filepath, output_filepath,
                             translation_lines = recent_translation.split('\n')
                             combined_context_lines = translation_lines + combined_context_lines
                             
-                            # Stop if we have enough lines (minimum 10 lines or 300 words)
-                            if len(combined_context_lines) >= 10 or len(' '.join(combined_context_lines).split()) >= 300:
+                            # Stop if we have enough lines (minimum 3 lines or 25 words)
+                            if len(combined_context_lines) >= 3 or len(' '.join(combined_context_lines).split()) >= 25:
                                 break
                         
                         # Keep only the most recent context that provides sufficient content
-                        if len(combined_context_lines) > 20:  # Limit to max 20 lines to avoid too much context
-                            combined_context_lines = combined_context_lines[-20:]
+                        if len(combined_context_lines) > 5:  # Limit to max 5 lines to avoid too much context
+                            combined_context_lines = combined_context_lines[-5:]
                         
                         last_successful_llm_context = '\n'.join(combined_context_lines)
                         
