@@ -149,7 +149,8 @@ async def generate_translation_request(main_content, context_before, context_aft
 
 
 async def post_process_translation(translated_text, target_language="French", model=DEFAULT_MODEL,
-                                 llm_client=None, log_callback=None, custom_instructions=""):
+                                 llm_client=None, log_callback=None, custom_instructions="",
+                                 tag_map=None):
     """
     Post-process translated text to improve quality
     
@@ -160,6 +161,7 @@ async def post_process_translation(translated_text, target_language="French", mo
         llm_client: LLM client instance
         log_callback (callable): Logging callback function
         custom_instructions (str): Additional improvement instructions
+        tag_map (dict): Optional tag mapping for placeholder validation
         
     Returns:
         str: Improved text or original if post-processing fails
@@ -167,6 +169,12 @@ async def post_process_translation(translated_text, target_language="French", mo
     # Skip post-processing for very short text
     if len(translated_text.strip()) <= 1:
         return translated_text
+    
+    # Import TagPreserver for placeholder validation
+    from .epub_processor import TagPreserver
+    
+    # Check for placeholders in input if tag_map provided
+    has_placeholders = tag_map is not None and len(tag_map) > 0
     
     structured_prompt = generate_post_processing_prompt(
         translated_text,
@@ -200,6 +208,58 @@ async def post_process_translation(translated_text, target_language="French", mo
     improved_text = client.extract_translation(full_raw_response)
     
     if improved_text:
+        # Validate placeholders if we have a tag map
+        if has_placeholders:
+            tag_preserver = TagPreserver()
+            is_valid, missing, mutated = tag_preserver.validate_placeholders(improved_text, tag_map)
+            
+            if not is_valid:
+                if log_callback:
+                    log_callback("post_process_placeholder_validation_failed", 
+                               f"Post-processing placeholder validation failed. Missing: {missing}, Mutated: {mutated}")
+                
+                # Try to fix mutated placeholders
+                if mutated:
+                    improved_text = tag_preserver.fix_mutated_placeholders(improved_text, mutated)
+                    is_valid, missing, mutated = tag_preserver.validate_placeholders(improved_text, tag_map)
+                
+                # If still missing placeholders, retry with stronger instructions
+                if not is_valid and missing:
+                    if log_callback:
+                        log_callback("post_process_retrying", 
+                                   f"Retrying post-processing due to missing placeholders: {missing}")
+                    
+                    retry_instructions = (f"{custom_instructions}\n\n"
+                                        f"CRITICAL: You MUST preserve ALL placeholder tags EXACTLY as they appear. "
+                                        f"Tags like ⟦TAG0⟧, ⟦TAG1⟧, etc. must remain COMPLETELY UNCHANGED. "
+                                        f"Missing tags that MUST be preserved: {', '.join(missing)}")
+                    
+                    retry_prompt = generate_post_processing_prompt(
+                        translated_text,
+                        target_language,
+                        custom_instructions=retry_instructions
+                    )
+                    
+                    retry_response = await client.make_request(retry_prompt, model)
+                    
+                    if retry_response:
+                        retry_text = client.extract_translation(retry_response)
+                        if retry_text:
+                            # Validate retry
+                            is_valid_retry, missing_retry, mutated_retry = tag_preserver.validate_placeholders(retry_text, tag_map)
+                            
+                            if is_valid_retry or (not missing_retry):
+                                improved_text = retry_text
+                                if log_callback:
+                                    log_callback("post_process_retry_successful", 
+                                               "Post-processing retry successful - placeholders preserved")
+                            else:
+                                # If retry still failed, use original to avoid losing placeholders
+                                if log_callback:
+                                    log_callback("post_process_retry_failed", 
+                                               f"Post-processing retry failed - using original. Still missing: {missing_retry}")
+                                return translated_text
+        
         # Apply post-processor cleaning
         cleaned_text = clean_translated_text(improved_text)
         return cleaned_text
@@ -246,82 +306,88 @@ async def translate_chunks(chunks, source_language, target_language, model_name,
     # Create LLM client based on provider or custom endpoint
     llm_client = _create_llm_client(llm_provider, gemini_api_key, api_endpoint, model_name)
 
-    iterator = tqdm(chunks, desc=f"Translating {source_language} to {target_language}", unit="seg") if not log_callback else chunks
+    try:
+        iterator = tqdm(chunks, desc=f"Translating {source_language} to {target_language}", unit="seg") if not log_callback else chunks
 
-    for i, chunk_data in enumerate(iterator):
-        if check_interruption_callback and check_interruption_callback():
-            if log_callback: 
-                log_callback("txt_translation_interrupted", f"Translation process for segment {i+1}/{total_chunks} interrupted by user signal.")
-            else: 
-                tqdm.write(f"\nTranslation interrupted by user at segment {i+1}/{total_chunks}.")
-            break
+        for i, chunk_data in enumerate(iterator):
+            if check_interruption_callback and check_interruption_callback():
+                if log_callback: 
+                    log_callback("txt_translation_interrupted", f"Translation process for segment {i+1}/{total_chunks} interrupted by user signal.")
+                else: 
+                    tqdm.write(f"\nTranslation interrupted by user at segment {i+1}/{total_chunks}.")
+                break
 
-        if progress_callback and total_chunks > 0:
-            progress_callback((i / total_chunks) * 100)
-        
-        # Log progress summary periodically
-        if log_callback and i > 0 and i % 5 == 0:
-            log_callback("", "info", {
-                'type': 'progress'
-            })
+            if progress_callback and total_chunks > 0:
+                progress_callback((i / total_chunks) * 100)
+            
+            # Log progress summary periodically
+            if log_callback and i > 0 and i % 5 == 0:
+                log_callback("", "info", {
+                    'type': 'progress'
+                })
 
-        main_content_to_translate = chunk_data["main_content"]
-        context_before_text = chunk_data["context_before"]
-        context_after_text = chunk_data["context_after"]
+            main_content_to_translate = chunk_data["main_content"]
+            context_before_text = chunk_data["context_before"]
+            context_after_text = chunk_data["context_after"]
 
-        if not main_content_to_translate.strip():
-            full_translation_parts.append(main_content_to_translate)
-            completed_chunks_count += 1
+            if not main_content_to_translate.strip():
+                full_translation_parts.append(main_content_to_translate)
+                completed_chunks_count += 1
+                if stats_callback and total_chunks > 0:
+                    stats_callback({'completed_chunks': completed_chunks_count, 'failed_chunks': failed_chunks_count})
+                continue
+
+            translated_chunk_text = await generate_translation_request(
+                main_content_to_translate, context_before_text, context_after_text,
+                last_successful_llm_context, source_language, target_language,
+                model_name, llm_client=llm_client, log_callback=log_callback,
+                custom_instructions=custom_instructions
+            )
+
+            if translated_chunk_text is not None:
+                # Apply post-processing if enabled
+                if enable_post_processing:
+                    if log_callback:
+                        log_callback("post_processing_chunk", f"Post-processing chunk {i+1}/{total_chunks}")
+                    
+                    improved_text = await post_process_translation(
+                        translated_chunk_text,
+                        target_language,
+                        model_name,
+                        llm_client=llm_client,
+                        log_callback=log_callback,
+                        custom_instructions=post_processing_instructions
+                    )
+                    translated_chunk_text = improved_text
+                else:
+                    # Always apply basic cleaning even without post-processing
+                    translated_chunk_text = clean_translated_text(translated_chunk_text)
+                
+                full_translation_parts.append(translated_chunk_text)
+                completed_chunks_count += 1
+                words = translated_chunk_text.split()
+                if len(words) > 150:
+                    last_successful_llm_context = " ".join(words[-150:])
+                else:
+                    last_successful_llm_context = translated_chunk_text
+            else:
+                err_msg_chunk = f"ERROR translating segment {i+1}. Original content preserved."
+                if log_callback: 
+                    log_callback("txt_chunk_translation_error", err_msg_chunk)
+                else: 
+                    tqdm.write(f"\n{err_msg_chunk}")
+                error_placeholder = f"[TRANSLATION_ERROR SEGMENT {i+1}]\n{main_content_to_translate}\n[/TRANSLATION_ERROR SEGMENT {i+1}]"
+                full_translation_parts.append(error_placeholder)
+                failed_chunks_count += 1
+                last_successful_llm_context = ""
+
             if stats_callback and total_chunks > 0:
                 stats_callback({'completed_chunks': completed_chunks_count, 'failed_chunks': failed_chunks_count})
-            continue
-
-        translated_chunk_text = await generate_translation_request(
-            main_content_to_translate, context_before_text, context_after_text,
-            last_successful_llm_context, source_language, target_language,
-            model_name, llm_client=llm_client, log_callback=log_callback,
-            custom_instructions=custom_instructions
-        )
-
-        if translated_chunk_text is not None:
-            # Apply post-processing if enabled
-            if enable_post_processing:
-                if log_callback:
-                    log_callback("post_processing_chunk", f"Post-processing chunk {i+1}/{total_chunks}")
-                
-                improved_text = await post_process_translation(
-                    translated_chunk_text,
-                    target_language,
-                    model_name,
-                    llm_client=llm_client,
-                    log_callback=log_callback,
-                    custom_instructions=post_processing_instructions
-                )
-                translated_chunk_text = improved_text
-            else:
-                # Always apply basic cleaning even without post-processing
-                translated_chunk_text = clean_translated_text(translated_chunk_text)
-            
-            full_translation_parts.append(translated_chunk_text)
-            completed_chunks_count += 1
-            words = translated_chunk_text.split()
-            if len(words) > 150:
-                last_successful_llm_context = " ".join(words[-150:])
-            else:
-                last_successful_llm_context = translated_chunk_text
-        else:
-            err_msg_chunk = f"ERROR translating segment {i+1}. Original content preserved."
-            if log_callback: 
-                log_callback("txt_chunk_translation_error", err_msg_chunk)
-            else: 
-                tqdm.write(f"\n{err_msg_chunk}")
-            error_placeholder = f"[TRANSLATION_ERROR SEGMENT {i+1}]\n{main_content_to_translate}\n[/TRANSLATION_ERROR SEGMENT {i+1}]"
-            full_translation_parts.append(error_placeholder)
-            failed_chunks_count += 1
-            last_successful_llm_context = ""
-
-        if stats_callback and total_chunks > 0:
-            stats_callback({'completed_chunks': completed_chunks_count, 'failed_chunks': failed_chunks_count})
+    
+    finally:
+        # Clean up LLM client resources if created
+        if llm_client:
+            await llm_client.close()
 
     return full_translation_parts
 
@@ -360,91 +426,97 @@ async def translate_subtitles(subtitles: List[Dict[str, str]], source_language: 
     # Create LLM client based on provider or custom endpoint
     llm_client = _create_llm_client(llm_provider, gemini_api_key, api_endpoint, model_name)
     
-    iterator = tqdm(enumerate(subtitles), total=total_subtitles, 
-                   desc=f"Translating subtitles ({source_language} to {target_language})", 
-                   unit="subtitle") if not log_callback else enumerate(subtitles)
-    
-    for idx, subtitle in iterator:
-        if check_interruption_callback and check_interruption_callback():
-            if log_callback:
-                log_callback("srt_translation_interrupted", 
-                           f"Translation interrupted at subtitle {idx+1}/{total_subtitles}")
-            else:
-                tqdm.write(f"\nTranslation interrupted at subtitle {idx+1}/{total_subtitles}")
-            break
+    try:
+        iterator = tqdm(enumerate(subtitles), total=total_subtitles, 
+                       desc=f"Translating subtitles ({source_language} to {target_language})", 
+                       unit="subtitle") if not log_callback else enumerate(subtitles)
         
-        if progress_callback and total_subtitles > 0:
-            progress_callback((idx / total_subtitles) * 100)
-        
-        text_to_translate = subtitle['text'].strip()
-        
-        if not text_to_translate:
-            translations[idx] = ""
-            completed_count += 1
-            continue
-        
-        context_before = ""
-        context_after = ""
-        
-        if idx > 0 and idx-1 in translations:
-            context_before = translations[idx-1]
-        elif idx > 0:
-            context_before = subtitles[idx-1].get('text', '')
-        
-        if idx < len(subtitles) - 1:
-            context_after = subtitles[idx+1].get('text', '')
-        
-        translated_text = await generate_translation_request(
-            text_to_translate,
-            context_before,
-            context_after,
-            "",
-            source_language,
-            target_language,
-            model_name,
-            llm_client=llm_client,
-            log_callback=log_callback,
-            custom_instructions=custom_instructions
-        )
-        
-        if translated_text is not None:
-            # Apply post-processing if enabled
-            if enable_post_processing:
+        for idx, subtitle in iterator:
+            if check_interruption_callback and check_interruption_callback():
                 if log_callback:
-                    log_callback("post_processing_subtitle", f"Post-processing subtitle {idx+1}")
-                
-                improved_text = await post_process_translation(
-                    translated_text,
-                    target_language,
-                    model_name,
-                    llm_client=llm_client,
-                    log_callback=log_callback,
-                    custom_instructions=post_processing_instructions
-                )
-                translated_text = improved_text
+                    log_callback("srt_translation_interrupted", 
+                               f"Translation interrupted at subtitle {idx+1}/{total_subtitles}")
+                else:
+                    tqdm.write(f"\nTranslation interrupted at subtitle {idx+1}/{total_subtitles}")
+                break
             
-            translations[idx] = translated_text
-            completed_count += 1
-        else:
-            # Keep original text if translation fails
-            err_msg = f"Failed to translate subtitle {idx+1}"
-            if log_callback:
-                log_callback("srt_subtitle_error", err_msg)
+            if progress_callback and total_subtitles > 0:
+                progress_callback((idx / total_subtitles) * 100)
+            
+            text_to_translate = subtitle['text'].strip()
+            
+            if not text_to_translate:
+                translations[idx] = ""
+                completed_count += 1
+                continue
+            
+            context_before = ""
+            context_after = ""
+            
+            if idx > 0 and idx-1 in translations:
+                context_before = translations[idx-1]
+            elif idx > 0:
+                context_before = subtitles[idx-1].get('text', '')
+            
+            if idx < len(subtitles) - 1:
+                context_after = subtitles[idx+1].get('text', '')
+            
+            translated_text = await generate_translation_request(
+                text_to_translate,
+                context_before,
+                context_after,
+                "",
+                source_language,
+                target_language,
+                model_name,
+                llm_client=llm_client,
+                log_callback=log_callback,
+                custom_instructions=custom_instructions
+            )
+            
+            if translated_text is not None:
+                # Apply post-processing if enabled
+                if enable_post_processing:
+                    if log_callback:
+                        log_callback("post_processing_subtitle", f"Post-processing subtitle {idx+1}")
+                    
+                    improved_text = await post_process_translation(
+                        translated_text,
+                        target_language,
+                        model_name,
+                        llm_client=llm_client,
+                        log_callback=log_callback,
+                        custom_instructions=post_processing_instructions
+                    )
+                    translated_text = improved_text
+                
+                translations[idx] = translated_text
+                completed_count += 1
             else:
-                tqdm.write(f"\n{err_msg}")
-            translations[idx] = text_to_translate  # Keep original
-            failed_count += 1
-        
-        if stats_callback and total_subtitles > 0:
-            stats_callback({
-                'completed_subtitles': completed_count,
-                'failed_subtitles': failed_count,
-                'total_subtitles': total_subtitles
-            })
+                # Keep original text if translation fails
+                err_msg = f"Failed to translate subtitle {idx+1}"
+                if log_callback:
+                    log_callback("srt_subtitle_error", err_msg)
+                else:
+                    tqdm.write(f"\n{err_msg}")
+                translations[idx] = text_to_translate  # Keep original
+                failed_count += 1
+            
+            if stats_callback and total_subtitles > 0:
+                stats_callback({
+                    'completed_subtitles': completed_count,
+                    'failed_subtitles': failed_count,
+                    'total_subtitles': total_subtitles
+                })
     
-    if log_callback:
-        log_callback("srt_translation_complete", 
-                    f"Completed translation: {completed_count} successful, {failed_count} failed")
+        if log_callback:
+            log_callback("srt_translation_complete", 
+                        f"Completed translation: {completed_count} successful, {failed_count} failed")
+    
+    finally:
+        # Clean up LLM client resources if created
+        if llm_client:
+            await llm_client.close()
     
     return translations
 
@@ -492,33 +564,34 @@ async def translate_subtitles_in_blocks(subtitle_blocks: List[List[Dict[str, str
     # Create LLM client based on provider or custom endpoint
     llm_client = _create_llm_client(llm_provider, gemini_api_key, api_endpoint, model_name)
     
-    for block_idx, block in enumerate(subtitle_blocks):
-        if check_interruption_callback and check_interruption_callback():
-            if log_callback:
-                log_callback("srt_translation_interrupted", 
-                           f"Translation interrupted at block {block_idx+1}/{total_blocks}")
-            else:
-                tqdm.write(f"\nTranslation interrupted at block {block_idx+1}/{total_blocks}")
-            break
-        
-        if progress_callback and total_blocks > 0:
-            progress_callback((block_idx / total_blocks) * 100)
-        
-        # Prepare subtitle blocks with indices
-        subtitle_tuples = []
-        block_indices = []
-        
-        for subtitle in block:
-            idx = int(subtitle['number']) - 1  # Convert to 0-based index
-            text = subtitle['text'].strip()
-            if text:  # Only include non-empty subtitles
-                subtitle_tuples.append((idx, text))
-                block_indices.append(idx)
-        
-        if not subtitle_tuples:
-            continue
-        
-        # Generate prompt for this block
+    try:
+        for block_idx, block in enumerate(subtitle_blocks):
+            if check_interruption_callback and check_interruption_callback():
+                if log_callback:
+                    log_callback("srt_translation_interrupted", 
+                               f"Translation interrupted at block {block_idx+1}/{total_blocks}")
+                else:
+                    tqdm.write(f"\nTranslation interrupted at block {block_idx+1}/{total_blocks}")
+                break
+            
+            if progress_callback and total_blocks > 0:
+                progress_callback((block_idx / total_blocks) * 100)
+            
+            # Prepare subtitle blocks with indices
+            subtitle_tuples = []
+            block_indices = []
+            
+            for subtitle in block:
+                idx = int(subtitle['number']) - 1  # Convert to 0-based index
+                text = subtitle['text'].strip()
+                if text:  # Only include non-empty subtitles
+                    subtitle_tuples.append((idx, text))
+                    block_indices.append(idx)
+            
+            if not subtitle_tuples:
+                continue
+            
+            # Generate prompt for this block
         prompt = generate_subtitle_block_prompt(
             subtitle_tuples,
             previous_translation_block,
@@ -620,8 +693,13 @@ async def translate_subtitles_in_blocks(subtitle_blocks: List[List[Dict[str, str
                 'total_blocks': total_blocks
             })
     
-    if log_callback:
-        log_callback("srt_block_translation_complete", 
-                    f"Completed block translation: {completed_count} successful, {failed_count} failed")
+        if log_callback:
+            log_callback("srt_block_translation_complete", 
+                        f"Completed block translation: {completed_count} successful, {failed_count} failed")
+    
+    finally:
+        # Clean up LLM client resources if created
+        if llm_client:
+            await llm_client.close()
     
     return translations

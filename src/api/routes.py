@@ -23,7 +23,7 @@ from src.config import (
 )
 
 
-def configure_routes(app, active_translations, output_dir, start_translation_job):
+def configure_routes(app, state_manager, output_dir, start_translation_job):
     """Configure Flask routes"""
     
     # Initialize secure file handler
@@ -201,16 +201,7 @@ def configure_routes(app, active_translations, output_dir, start_translation_job
             config['text'] = data['text']
             config['file_type'] = data.get('file_type', 'txt')
 
-        active_translations[translation_id] = {
-            'status': 'queued',
-            'progress': 0,
-            'stats': {'start_time': time.time(), 'total_chunks': 0, 'completed_chunks': 0, 'failed_chunks': 0},
-            'logs': [f"[{datetime.now().strftime('%H:%M:%S')}] Translation {translation_id} queued."],
-            'result': None,
-            'config': config,
-            'interrupted': False,
-            'output_filepath': None
-        }
+        state_manager.create_translation(translation_id, config)
 
         start_translation_job(translation_id, config)
 
@@ -312,10 +303,9 @@ def configure_routes(app, active_translations, output_dir, start_translation_job
 
     @app.route('/api/translation/<translation_id>', methods=['GET'])
     def get_translation_job_status(translation_id):
-        if translation_id not in active_translations:
+        job_data = state_manager.get_translation(translation_id)
+        if not job_data:
             return jsonify({"error": "Translation not found"}), 404
-        
-        job_data = active_translations[translation_id]
         stats = job_data.get('stats', {'start_time': time.time(), 'total_chunks': 0, 'completed_chunks': 0, 'failed_chunks': 0})
         
         if job_data.get('status') == 'running' or job_data.get('status') == 'queued':
@@ -343,29 +333,20 @@ def configure_routes(app, active_translations, output_dir, start_translation_job
 
     @app.route('/api/translation/<translation_id>/interrupt', methods=['POST'])
     def interrupt_translation_job(translation_id):
-        if translation_id not in active_translations:
+        if not state_manager.exists(translation_id):
             return jsonify({"error": "Translation not found"}), 404
         
-        job = active_translations[translation_id]
-        if job.get('status') == 'running' or job.get('status') == 'queued':
-            job['interrupted'] = True
+        job_data = state_manager.get_translation(translation_id)
+        if job_data.get('status') == 'running' or job_data.get('status') == 'queued':
+            state_manager.set_interrupted(translation_id, True)
             return jsonify({"message": "Interruption signal sent. Translation will stop after the current segment."}), 200
         return jsonify({"message": "The translation is not in an interruptible state (e.g., already completed or failed)."}), 400
 
 
     @app.route('/api/translations', methods=['GET'])
     def list_all_translations():
-        summary_list = []
-        for tid, data in active_translations.items():
-            summary_list.append({
-                "translation_id": tid,
-                "status": data.get('status'),
-                "progress": data.get('progress'),
-                "start_time": data.get('stats', {}).get('start_time'),
-                "output_filename": data.get('config', {}).get('output_filename'),
-                "file_type": data.get('config', {}).get('file_type', 'txt')
-            })
-        return jsonify({"translations": sorted(summary_list, key=lambda x: x.get('start_time', 0), reverse=True)})
+        summary_list = state_manager.get_translation_summaries()
+        return jsonify({"translations": summary_list})
 
     @app.route('/api/security/cleanup', methods=['POST'])
     def cleanup_old_files():

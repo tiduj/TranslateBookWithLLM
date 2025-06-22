@@ -18,6 +18,7 @@ from src.config import (
 from src.api.routes import configure_routes
 from src.api.websocket import configure_websocket_handlers
 from src.api.handlers import start_translation_job
+from src.api.translation_state import get_state_manager
 
 # Initialize Flask app with static folder configuration
 app = Flask(__name__, 
@@ -26,8 +27,8 @@ app = Flask(__name__,
 CORS(app)
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-# Global state
-active_translations = {}
+# Thread-safe state manager
+state_manager = get_state_manager()
 OUTPUT_DIR = "translated_files"
 
 # Ensure output directory exists
@@ -43,11 +44,11 @@ except OSError as e:
 # Wrapper function for starting translation jobs
 def start_job_wrapper(translation_id, config):
     """Wrapper to inject dependencies into job starter"""
-    start_translation_job(translation_id, config, active_translations, OUTPUT_DIR, socketio)
+    start_translation_job(translation_id, config, state_manager, OUTPUT_DIR, socketio)
 
 # Configure routes and WebSocket handlers
-configure_routes(app, active_translations, OUTPUT_DIR, start_job_wrapper)
-configure_websocket_handlers(socketio)
+configure_routes(app, state_manager, OUTPUT_DIR, start_job_wrapper)
+configure_websocket_handlers(socketio, state_manager)
 
 if __name__ == '__main__':
     print("\n" + "="*60 + f"\n🚀 LLM TRANSLATION SERVER (Version {datetime.now().strftime('%Y%m%d-%H%M')})\n" + "="*60)

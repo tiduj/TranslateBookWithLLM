@@ -24,6 +24,22 @@ class LLMProvider(ABC):
             rf"{re.escape(TRANSLATE_TAG_IN)}(.*?){re.escape(TRANSLATE_TAG_OUT)}", 
             re.DOTALL
         )
+        self._client = None
+    
+    async def _get_client(self) -> httpx.AsyncClient:
+        """Get or create a persistent HTTP client with connection pooling"""
+        if self._client is None:
+            self._client = httpx.AsyncClient(
+                limits=httpx.Limits(max_keepalive_connections=5, max_connections=10),
+                timeout=httpx.Timeout(REQUEST_TIMEOUT)
+            )
+        return self._client
+    
+    async def close(self):
+        """Close the HTTP client"""
+        if self._client:
+            await self._client.aclose()
+            self._client = None
     
     @abstractmethod
     async def generate(self, prompt: str, timeout: int = REQUEST_TIMEOUT) -> Optional[str]:
@@ -65,41 +81,41 @@ class OllamaProvider(LLMProvider):
             "options": {"num_ctx": OLLAMA_NUM_CTX}
         }
         
-        async with httpx.AsyncClient() as client:
-            for attempt in range(MAX_TRANSLATION_ATTEMPTS):
-                try:
-                    # print(f"Ollama API Request to {self.api_endpoint} with model {self.model}")
-                    response = await client.post(
-                        self.api_endpoint, 
-                        json=payload, 
-                        timeout=timeout
-                    )
-                    response.raise_for_status()
-                    
-                    response_json = response.json()
-                    response_text = response_json.get("response", "")
-                    # print(f"Ollama API Response received: {len(response_text)} characters")
-                    return response_text
-                    
-                except httpx.TimeoutException as e:
+        client = await self._get_client()
+        for attempt in range(MAX_TRANSLATION_ATTEMPTS):
+            try:
+                # print(f"Ollama API Request to {self.api_endpoint} with model {self.model}")
+                response = await client.post(
+                    self.api_endpoint, 
+                    json=payload, 
+                    timeout=timeout
+                )
+                response.raise_for_status()
+                
+                response_json = response.json()
+                response_text = response_json.get("response", "")
+                # print(f"Ollama API Response received: {len(response_text)} characters")
+                return response_text
+                
+            except httpx.TimeoutException as e:
                     print(f"Ollama API Timeout (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
                     if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
                         await asyncio.sleep(RETRY_DELAY_SECONDS)
                         continue
                     return None
-                except httpx.HTTPStatusError as e:
+            except httpx.HTTPStatusError as e:
                     print(f"Ollama API HTTP Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
                     if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
                         await asyncio.sleep(RETRY_DELAY_SECONDS)
                         continue
                     return None
-                except json.JSONDecodeError as e:
+            except json.JSONDecodeError as e:
                     print(f"Ollama API JSON Decode Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
                     if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
                         await asyncio.sleep(RETRY_DELAY_SECONDS)
                         continue
                     return None
-                except Exception as e:
+            except Exception as e:
                     print(f"Ollama API Unknown Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
                     if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
                         await asyncio.sleep(RETRY_DELAY_SECONDS)
@@ -126,43 +142,43 @@ class GeminiProvider(LLMProvider):
         
         models_endpoint = "https://generativelanguage.googleapis.com/v1beta/models"
         
-        async with httpx.AsyncClient() as client:
-            try:
-                response = await client.get(
-                    models_endpoint,
-                    headers=headers,
-                    timeout=10
-                )
-                response.raise_for_status()
+        client = await self._get_client()
+        try:
+            response = await client.get(
+                models_endpoint,
+                headers=headers,
+                timeout=10
+            )
+            response.raise_for_status()
+            
+            data = response.json()
+            models = []
+            
+            for model in data.get("models", []):
+                model_name = model.get("name", "").replace("models/", "")
                 
-                data = response.json()
-                models = []
+                # Skip thinking, experimental, latest, and vision models
+                model_name_lower = model_name.lower()
+                skip_keywords = ["thinking", "experimental", "latest", "vision", "-exp-"]
+                if any(keyword in model_name_lower for keyword in skip_keywords):
+                    continue
                 
-                for model in data.get("models", []):
-                    model_name = model.get("name", "").replace("models/", "")
-                    
-                    # Skip thinking, experimental, latest, and vision models
-                    model_name_lower = model_name.lower()
-                    skip_keywords = ["thinking", "experimental", "latest", "vision", "-exp-"]
-                    if any(keyword in model_name_lower for keyword in skip_keywords):
-                        continue
-                    
-                    # Only include models that support generateContent
-                    supported_methods = model.get("supportedGenerationMethods", [])
-                    if "generateContent" in supported_methods:
-                        models.append({
-                            "name": model_name,
-                            "displayName": model.get("displayName", model_name),
-                            "description": model.get("description", ""),
-                            "inputTokenLimit": model.get("inputTokenLimit", 0),
-                            "outputTokenLimit": model.get("outputTokenLimit", 0)
-                        })
+                # Only include models that support generateContent
+                supported_methods = model.get("supportedGenerationMethods", [])
+                if "generateContent" in supported_methods:
+                    models.append({
+                        "name": model_name,
+                        "displayName": model.get("displayName", model_name),
+                        "description": model.get("description", ""),
+                        "inputTokenLimit": model.get("inputTokenLimit", 0),
+                        "outputTokenLimit": model.get("outputTokenLimit", 0)
+                    })
                 
-                return models
-                
-            except Exception as e:
-                print(f"Error fetching Gemini models: {e}")
-                return []
+            return models
+            
+        except Exception as e:
+            print(f"Error fetching Gemini models: {e}")
+            return []
     
     async def generate(self, prompt: str, timeout: int = REQUEST_TIMEOUT) -> Optional[str]:
         """Generate text using Gemini API"""
@@ -187,37 +203,37 @@ class GeminiProvider(LLMProvider):
         # print(f"[DEBUG] Gemini API URL: {self.api_endpoint}")
         # print(f"[DEBUG] Using API key: {self.api_key[:10]}...{self.api_key[-4:]}")
         
-        async with httpx.AsyncClient() as client:
-            for attempt in range(MAX_TRANSLATION_ATTEMPTS):
-                try:
-                    # print(f"Gemini API Request to {self.api_endpoint}")
-                    response = await client.post(
-                        self.api_endpoint,
-                        headers=headers,
-                        json=payload,
-                        timeout=timeout
-                    )
-                    response.raise_for_status()
-                    
-                    response_json = response.json()
-                    # Extract text from Gemini response structure
-                    response_text = ""
-                    if "candidates" in response_json and response_json["candidates"]:
-                        content = response_json["candidates"][0].get("content", {})
-                        parts = content.get("parts", [])
-                        if parts:
-                            response_text = parts[0].get("text", "")
-                    
-                    # print(f"Gemini API Response received: {len(response_text)} characters")
-                    return response_text
-                    
-                except httpx.TimeoutException as e:
+        client = await self._get_client()
+        for attempt in range(MAX_TRANSLATION_ATTEMPTS):
+            try:
+                # print(f"Gemini API Request to {self.api_endpoint}")
+                response = await client.post(
+                    self.api_endpoint,
+                    headers=headers,
+                    json=payload,
+                    timeout=timeout
+                )
+                response.raise_for_status()
+                
+                response_json = response.json()
+                # Extract text from Gemini response structure
+                response_text = ""
+                if "candidates" in response_json and response_json["candidates"]:
+                    content = response_json["candidates"][0].get("content", {})
+                    parts = content.get("parts", [])
+                    if parts:
+                        response_text = parts[0].get("text", "")
+                
+                # print(f"Gemini API Response received: {len(response_text)} characters")
+                return response_text
+                
+            except httpx.TimeoutException as e:
                     print(f"Gemini API Timeout (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
                     if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
                         await asyncio.sleep(RETRY_DELAY_SECONDS)
                         continue
                     return None
-                except httpx.HTTPStatusError as e:
+            except httpx.HTTPStatusError as e:
                     print(f"Gemini API HTTP Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
                     if hasattr(e, 'response') and hasattr(e.response, 'text'):
                         print(f"Response details: Status {e.response.status_code}, Body: {e.response.text[:200]}...")
@@ -225,13 +241,13 @@ class GeminiProvider(LLMProvider):
                         await asyncio.sleep(RETRY_DELAY_SECONDS)
                         continue
                     return None
-                except json.JSONDecodeError as e:
+            except json.JSONDecodeError as e:
                     print(f"Gemini API JSON Decode Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
                     if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
                         await asyncio.sleep(RETRY_DELAY_SECONDS)
                         continue
                     return None
-                except Exception as e:
+            except Exception as e:
                     print(f"Gemini API Unknown Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
                     if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
                         await asyncio.sleep(RETRY_DELAY_SECONDS)

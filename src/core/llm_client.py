@@ -84,6 +84,12 @@ class LLMClient:
             provider.model = model
             
         return await provider.translate_text(prompt)
+    
+    async def close(self):
+        """Close the HTTP client and clean up resources"""
+        if self._provider:
+            await self._provider.close()
+            self._provider = None
 
 
 # Global instance for backward compatibility

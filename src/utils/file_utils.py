@@ -3,6 +3,7 @@ File utilities for translation operations
 """
 import os
 import asyncio
+import aiofiles
 from src.core.text_processor import split_text_into_chunks_with_context
 from src.core.translator import translate_chunks, translate_subtitles, translate_subtitles_in_blocks
 from src.core.epub_processor import translate_epub_file
@@ -43,8 +44,8 @@ async def translate_text_file_with_callbacks(input_filepath, output_filepath,
         return
 
     try:
-        with open(input_filepath, 'r', encoding='utf-8') as f:
-            original_text = f.read()
+        async with aiofiles.open(input_filepath, 'r', encoding='utf-8') as f:
+            original_text = await f.read()
     except Exception as e:
         err_msg = f"ERROR: Reading input file '{input_filepath}': {e}"
         if log_callback: 
@@ -75,8 +76,8 @@ async def translate_text_file_with_callbacks(input_filepath, output_filepath,
         if log_callback: 
             log_callback("txt_empty_input", info_msg)
         try:
-            with open(output_filepath, 'w', encoding='utf-8') as f: 
-                f.write("")
+            async with aiofiles.open(output_filepath, 'w', encoding='utf-8') as f: 
+                await f.write("")
             if log_callback: 
                 log_callback("txt_empty_output_created", f"Empty output file '{output_filepath}' created.")
         except Exception as e:
@@ -115,8 +116,8 @@ async def translate_text_file_with_callbacks(input_filepath, output_filepath,
 
     final_translated_text = "\n".join(translated_parts)
     try:
-        with open(output_filepath, 'w', encoding='utf-8') as f:
-            f.write(final_translated_text)
+        async with aiofiles.open(output_filepath, 'w', encoding='utf-8') as f:
+            await f.write(final_translated_text)
         success_msg = f"Full/Partial translation saved: '{output_filepath}'"
         if log_callback: 
             log_callback("txt_save_success", success_msg)
@@ -165,8 +166,8 @@ async def translate_srt_file_with_callbacks(input_filepath, output_filepath,
     
     # Read SRT file
     try:
-        with open(input_filepath, 'r', encoding='utf-8') as f:
-            srt_content = f.read()
+        async with aiofiles.open(input_filepath, 'r', encoding='utf-8') as f:
+            srt_content = await f.read()
     except Exception as e:
         err_msg = f"ERROR: Reading SRT file '{input_filepath}': {e}"
         if log_callback:
@@ -253,8 +254,8 @@ async def translate_srt_file_with_callbacks(input_filepath, output_filepath,
     
     # Save translated SRT
     try:
-        with open(output_filepath, 'w', encoding='utf-8') as f:
-            f.write(translated_srt)
+        async with aiofiles.open(output_filepath, 'w', encoding='utf-8') as f:
+            await f.write(translated_srt)
         success_msg = f"SRT translation saved: '{output_filepath}'"
         if log_callback:
             log_callback("srt_save_success", success_msg)
