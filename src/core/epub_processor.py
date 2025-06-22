@@ -191,6 +191,62 @@ class TagPreserver:
                 restored_text = restored_text.replace(placeholder, tag_map[placeholder])
         
         return restored_text
+    
+    def validate_placeholders(self, text, tag_map):
+        """
+        Validate that all expected placeholders are present in the text
+        
+        Args:
+            text: Text to validate
+            tag_map: Dictionary mapping placeholders to original tags
+            
+        Returns:
+            tuple: (is_valid, missing_placeholders, mutated_placeholders)
+        """
+        missing_placeholders = []
+        mutated_placeholders = []
+        
+        for placeholder in tag_map.keys():
+            if placeholder not in text:
+                missing_placeholders.append(placeholder)
+                
+                # Check for common mutations
+                # Extract tag number
+                tag_num = placeholder[len(self.placeholder_prefix):-len(self.placeholder_suffix)]
+                
+                # Check various mutation patterns
+                mutations = [
+                    f"[[TAG{tag_num}]]",  # Double brackets
+                    f"[TAG{tag_num}]",    # Single brackets
+                    f"{{TAG{tag_num}}}",  # Curly braces
+                    f"<TAG{tag_num}>",    # Angle brackets
+                    f"TAG{tag_num}",      # No brackets (check last to avoid false positives)
+                    f"⟦TAG{tag_num}⟧",    # Unicode brackets (in case of encoding issues)
+                ]
+                
+                for mutation in mutations:
+                    if mutation in text:
+                        mutated_placeholders.append((placeholder, mutation))
+                        break
+        
+        is_valid = len(missing_placeholders) == 0 and len(mutated_placeholders) == 0
+        return is_valid, missing_placeholders, mutated_placeholders
+    
+    def fix_mutated_placeholders(self, text, mutated_placeholders):
+        """
+        Attempt to fix common placeholder mutations
+        
+        Args:
+            text: Text with mutated placeholders
+            mutated_placeholders: List of (original, mutated) placeholder pairs
+            
+        Returns:
+            str: Text with fixed placeholders
+        """
+        fixed_text = text
+        for original, mutated in mutated_placeholders:
+            fixed_text = fixed_text.replace(mutated, original)
+        return fixed_text
 
 
 def _get_node_text_content_with_br_as_newline(node):
@@ -516,6 +572,11 @@ async def translate_epub_chunks_with_context(chunks, source_language, target_lan
             translated_parts.append(main_content_to_translate)
             continue
 
+        # Extract placeholders from the source text for validation
+        import re
+        placeholder_pattern = r'⟦TAG\d+⟧'
+        source_placeholders = set(re.findall(placeholder_pattern, main_content_to_translate))
+        
         translated_chunk_text = await generate_translation_request(
             main_content_to_translate, context_before_text, context_after_text,
             previous_context, source_language, target_language,
@@ -524,10 +585,43 @@ async def translate_epub_chunks_with_context(chunks, source_language, target_lan
         )
 
         if translated_chunk_text is not None:
+            # Validate placeholders after translation if any exist
+            if source_placeholders:
+                translated_placeholders = set(re.findall(placeholder_pattern, translated_chunk_text))
+                missing_after_translation = source_placeholders - translated_placeholders
+                
+                if missing_after_translation:
+                    if log_callback:
+                        log_callback("epub_translation_missing_placeholders", 
+                                   f"Translation missing placeholders: {missing_after_translation}")
+                    
+                    # Retry translation with stronger instructions
+                    retry_instructions = (f"{custom_instructions}\n\n"
+                                        f"CRITICAL: You MUST preserve ALL placeholder tags exactly as they appear. "
+                                        f"Tags like {', '.join(sorted(source_placeholders))} must remain UNCHANGED in your translation.")
+                    
+                    retry_text = await generate_translation_request(
+                        main_content_to_translate, context_before_text, context_after_text,
+                        previous_context, source_language, target_language,
+                        model_name, llm_client=llm_client, log_callback=log_callback,
+                        custom_instructions=retry_instructions
+                    )
+                    
+                    if retry_text is not None:
+                        retry_placeholders = set(re.findall(placeholder_pattern, retry_text))
+                        if not (source_placeholders - retry_placeholders):  # All placeholders present
+                            translated_chunk_text = retry_text
+                            if log_callback:
+                                log_callback("epub_translation_retry_successful", 
+                                           "Translation retry successful - placeholders preserved")
+            
             # Apply post-processing if enabled
             if enable_post_processing:
                 if log_callback:
                     log_callback("post_processing_epub_chunk", f"Post-processing EPUB chunk {i+1}/{total_chunks}")
+                
+                # Create a temporary tag_map for validation
+                temp_tag_map = {placeholder: f"<tag{i}>" for i, placeholder in enumerate(source_placeholders)}
                 
                 improved_text = await post_process_translation(
                     translated_chunk_text,
@@ -535,8 +629,12 @@ async def translate_epub_chunks_with_context(chunks, source_language, target_lan
                     model_name,
                     llm_client=llm_client,
                     log_callback=log_callback,
-                    custom_instructions=post_processing_instructions
+                    custom_instructions=post_processing_instructions,
+                    tag_map=temp_tag_map if temp_tag_map else None
                 )
+                
+                # The post_process_translation function already handles validation and retry internally
+                # So we just use the result
                 translated_chunk_text = improved_text
             
             translated_parts.append(translated_chunk_text)
@@ -722,9 +820,28 @@ async def translate_epub_file(input_filepath, output_filepath,
                 # Join translated parts
                 translated_text = "\n".join(translated_parts)
                 
-                # If this job has a tag map, restore the tags
+                # If this job has a tag map, validate and restore the tags
                 if 'tag_map' in job and job['tag_map']:
                     tag_preserver = TagPreserver()
+                    
+                    # Final validation to check for any mutations that might have slipped through
+                    is_valid, missing, mutated = tag_preserver.validate_placeholders(translated_text, job['tag_map'])
+                    
+                    if not is_valid:
+                        # Try to fix mutated placeholders
+                        if mutated:
+                            translated_text = tag_preserver.fix_mutated_placeholders(translated_text, mutated)
+                            if log_callback:
+                                log_callback("epub_fixed_mutations_final", 
+                                           f"Fixed placeholder mutations in final check: {mutated}")
+                        
+                        # Log if still missing placeholders after all retries
+                        if missing:
+                            if log_callback:
+                                log_callback("epub_placeholders_still_missing", 
+                                           f"WARNING: Some placeholders still missing after all retries: {missing}")
+                    
+                    # Restore the tags
                     translated_text = tag_preserver.restore_tags(translated_text, job['tag_map'])
                 
                 job['translated_text'] = translated_text

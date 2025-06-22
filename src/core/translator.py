@@ -149,7 +149,8 @@ async def generate_translation_request(main_content, context_before, context_aft
 
 
 async def post_process_translation(translated_text, target_language="French", model=DEFAULT_MODEL,
-                                 llm_client=None, log_callback=None, custom_instructions=""):
+                                 llm_client=None, log_callback=None, custom_instructions="",
+                                 tag_map=None):
     """
     Post-process translated text to improve quality
     
@@ -160,6 +161,7 @@ async def post_process_translation(translated_text, target_language="French", mo
         llm_client: LLM client instance
         log_callback (callable): Logging callback function
         custom_instructions (str): Additional improvement instructions
+        tag_map (dict): Optional tag mapping for placeholder validation
         
     Returns:
         str: Improved text or original if post-processing fails
@@ -167,6 +169,12 @@ async def post_process_translation(translated_text, target_language="French", mo
     # Skip post-processing for very short text
     if len(translated_text.strip()) <= 1:
         return translated_text
+    
+    # Import TagPreserver for placeholder validation
+    from .epub_processor import TagPreserver
+    
+    # Check for placeholders in input if tag_map provided
+    has_placeholders = tag_map is not None and len(tag_map) > 0
     
     structured_prompt = generate_post_processing_prompt(
         translated_text,
@@ -200,6 +208,58 @@ async def post_process_translation(translated_text, target_language="French", mo
     improved_text = client.extract_translation(full_raw_response)
     
     if improved_text:
+        # Validate placeholders if we have a tag map
+        if has_placeholders:
+            tag_preserver = TagPreserver()
+            is_valid, missing, mutated = tag_preserver.validate_placeholders(improved_text, tag_map)
+            
+            if not is_valid:
+                if log_callback:
+                    log_callback("post_process_placeholder_validation_failed", 
+                               f"Post-processing placeholder validation failed. Missing: {missing}, Mutated: {mutated}")
+                
+                # Try to fix mutated placeholders
+                if mutated:
+                    improved_text = tag_preserver.fix_mutated_placeholders(improved_text, mutated)
+                    is_valid, missing, mutated = tag_preserver.validate_placeholders(improved_text, tag_map)
+                
+                # If still missing placeholders, retry with stronger instructions
+                if not is_valid and missing:
+                    if log_callback:
+                        log_callback("post_process_retrying", 
+                                   f"Retrying post-processing due to missing placeholders: {missing}")
+                    
+                    retry_instructions = (f"{custom_instructions}\n\n"
+                                        f"CRITICAL: You MUST preserve ALL placeholder tags EXACTLY as they appear. "
+                                        f"Tags like ⟦TAG0⟧, ⟦TAG1⟧, etc. must remain COMPLETELY UNCHANGED. "
+                                        f"Missing tags that MUST be preserved: {', '.join(missing)}")
+                    
+                    retry_prompt = generate_post_processing_prompt(
+                        translated_text,
+                        target_language,
+                        custom_instructions=retry_instructions
+                    )
+                    
+                    retry_response = await client.make_request(retry_prompt, model)
+                    
+                    if retry_response:
+                        retry_text = client.extract_translation(retry_response)
+                        if retry_text:
+                            # Validate retry
+                            is_valid_retry, missing_retry, mutated_retry = tag_preserver.validate_placeholders(retry_text, tag_map)
+                            
+                            if is_valid_retry or (not missing_retry):
+                                improved_text = retry_text
+                                if log_callback:
+                                    log_callback("post_process_retry_successful", 
+                                               "Post-processing retry successful - placeholders preserved")
+                            else:
+                                # If retry still failed, use original to avoid losing placeholders
+                                if log_callback:
+                                    log_callback("post_process_retry_failed", 
+                                               f"Post-processing retry failed - using original. Still missing: {missing_retry}")
+                                return translated_text
+        
         # Apply post-processor cleaning
         cleaned_text = clean_translated_text(improved_text)
         return cleaned_text

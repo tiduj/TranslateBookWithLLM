@@ -14,55 +14,57 @@ from src.utils.unified_logger import setup_web_logger, LogType
 from .websocket import emit_update
 
 
-def run_translation_async_wrapper(translation_id, config, active_translations, output_dir, socketio):
+def run_translation_async_wrapper(translation_id, config, state_manager, output_dir, socketio):
     """
     Wrapper for running translation in async context
     
     Args:
         translation_id (str): Translation job ID
         config (dict): Translation configuration
-        active_translations (dict): Active translations dictionary
+        state_manager: State manager instance
         output_dir (str): Output directory path
         socketio: SocketIO instance
     """
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     try:
-        loop.run_until_complete(perform_actual_translation(translation_id, config, active_translations, output_dir, socketio))
+        loop.run_until_complete(perform_actual_translation(translation_id, config, state_manager, output_dir, socketio))
     except Exception as e:
         error_msg = f"Uncaught major error in translation wrapper {translation_id}: {str(e)}"
         print(error_msg)
-        if translation_id in active_translations:
-            active_translations[translation_id]['status'] = 'error'
-            active_translations[translation_id]['error'] = error_msg
-            if 'logs' not in active_translations[translation_id]: 
-                active_translations[translation_id]['logs'] = []
-            active_translations[translation_id]['logs'].append(f"[{datetime.now().strftime('%H:%M:%S')}] CRITICAL WRAPPER ERROR: {error_msg}")
-            emit_update(socketio, translation_id, {'error': error_msg, 'status': 'error', 'log': f"CRITICAL WRAPPER ERROR: {error_msg}"}, active_translations)
+        if state_manager.exists(translation_id):
+            state_manager.set_translation_field(translation_id, 'status', 'error')
+            state_manager.set_translation_field(translation_id, 'error', error_msg)
+            logs = state_manager.get_translation_field(translation_id, 'logs')
+            if logs is None:
+                logs = []
+            logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] CRITICAL WRAPPER ERROR: {error_msg}")
+            state_manager.set_translation_field(translation_id, 'logs', logs)
+            emit_update(socketio, translation_id, {'error': error_msg, 'status': 'error', 'log': f"CRITICAL WRAPPER ERROR: {error_msg}"}, state_manager)
     finally:
         loop.close()
 
 
-async def perform_actual_translation(translation_id, config, active_translations, output_dir, socketio):
+async def perform_actual_translation(translation_id, config, state_manager, output_dir, socketio):
     """
     Perform the actual translation job
     
     Args:
         translation_id (str): Translation job ID
         config (dict): Translation configuration
-        active_translations (dict): Active translations dictionary
+        state_manager: State manager instance
         output_dir (str): Output directory path
         socketio: SocketIO instance
     """
-    if translation_id not in active_translations:
-        print(f"Critical error: {translation_id} not found in active_translations.")
+    if not state_manager.exists(translation_id):
+        print(f"Critical error: {translation_id} not found in state_manager.")
         return
 
-    active_translations[translation_id]['status'] = 'running'
-    emit_update(socketio, translation_id, {'status': 'running', 'log': 'Translation task started by worker.'}, active_translations)
+    state_manager.set_translation_field(translation_id, 'status', 'running')
+    emit_update(socketio, translation_id, {'status': 'running', 'log': 'Translation task started by worker.'}, state_manager)
 
     def should_interrupt_current_task():
-        if translation_id in active_translations and active_translations[translation_id].get('interrupted', False):
+        if state_manager.exists(translation_id) and state_manager.get_translation_field(translation_id, 'interrupted'):
             _log_message_callback("interruption_check", f"Interruption signal detected for job {translation_id}. Halting processing.")
             return True
         return False
@@ -70,16 +72,20 @@ async def perform_actual_translation(translation_id, config, active_translations
     # Setup unified logger for web interface
     def web_callback(log_entry):
         """Callback for WebSocket emission"""
-        if 'logs' not in active_translations[translation_id]: 
-            active_translations[translation_id]['logs'] = []
-        active_translations[translation_id]['logs'].append(log_entry)
-        emit_update(socketio, translation_id, {'log': log_entry['message']}, active_translations)
+        logs = state_manager.get_translation_field(translation_id, 'logs')
+        if logs is None:
+            logs = []
+        logs.append(log_entry)
+        state_manager.set_translation_field(translation_id, 'logs', logs)
+        emit_update(socketio, translation_id, {'log': log_entry['message']}, state_manager)
     
     def storage_callback(log_entry):
         """Callback for storing logs"""
-        if 'logs' not in active_translations[translation_id]: 
-            active_translations[translation_id]['logs'] = []
-        active_translations[translation_id]['logs'].append(log_entry)
+        logs = state_manager.get_translation_field(translation_id, 'logs')
+        if logs is None:
+            logs = []
+        logs.append(log_entry)
+        state_manager.set_translation_field(translation_id, 'logs', logs)
     
     logger = setup_web_logger(web_callback, storage_callback)
     
@@ -110,20 +116,19 @@ async def perform_actual_translation(translation_id, config, active_translations
                 logger.info(message_content)
 
     def _update_translation_progress_callback(progress_percent):
-        if translation_id in active_translations:
-            if not active_translations[translation_id].get('interrupted', False):
-                active_translations[translation_id]['progress'] = progress_percent
-            emit_update(socketio, translation_id, {'progress': active_translations[translation_id]['progress']}, active_translations)
+        if state_manager.exists(translation_id):
+            if not state_manager.get_translation_field(translation_id, 'interrupted'):
+                state_manager.set_translation_field(translation_id, 'progress', progress_percent)
+            progress = state_manager.get_translation_field(translation_id, 'progress')
+            emit_update(socketio, translation_id, {'progress': progress}, state_manager)
 
     def _update_translation_stats_callback(new_stats_dict):
-        if translation_id in active_translations:
-            if 'stats' not in active_translations[translation_id]: 
-                active_translations[translation_id]['stats'] = {}
-            current_stats = active_translations[translation_id]['stats']
-            current_stats.update(new_stats_dict)
-            
+        if state_manager.exists(translation_id):
+            state_manager.update_stats(translation_id, new_stats_dict)
+            current_stats = state_manager.get_translation_field(translation_id, 'stats') or {}
             current_stats['elapsed_time'] = time.time() - current_stats.get('start_time', time.time())
-            emit_update(socketio, translation_id, {'stats': current_stats}, active_translations)
+            state_manager.set_translation_field(translation_id, 'stats', current_stats)
+            emit_update(socketio, translation_id, {'stats': current_stats}, state_manager)
 
     try:
         # Log translation start with unified logger
@@ -173,7 +178,7 @@ async def perform_actual_translation(translation_id, config, active_translations
                 enable_post_processing=config.get('enable_post_processing', False),
                 post_processing_instructions=config.get('post_processing_instructions', '')
             )
-            active_translations[translation_id]['result'] = "[EPUB file translated - download to view]"
+            state_manager.set_translation_field(translation_id, 'result', "[EPUB file translated - download to view]")
             
         elif config['file_type'] == 'txt':
             temp_txt_file_path = None
@@ -205,10 +210,10 @@ async def perform_actual_translation(translation_id, config, active_translations
                 post_processing_instructions=config.get('post_processing_instructions', '')
             )
 
-            if os.path.exists(output_filepath_on_server) and active_translations[translation_id].get('status') not in ['error', 'interrupted_before_save']:
-                active_translations[translation_id]['result'] = "[TXT file translated - content available for download]"
+            if os.path.exists(output_filepath_on_server) and state_manager.get_translation_field(translation_id, 'status') not in ['error', 'interrupted_before_save']:
+                state_manager.set_translation_field(translation_id, 'result', "[TXT file translated - content available for download]")
             elif not os.path.exists(output_filepath_on_server):
-                active_translations[translation_id]['result'] = "[TXT file (partially) translated - content not loaded for preview or write failed]"
+                state_manager.set_translation_field(translation_id, 'result', "[TXT file (partially) translated - content not loaded for preview or write failed]")
 
             if temp_txt_file_path and os.path.exists(temp_txt_file_path):
                 os.remove(temp_txt_file_path)
@@ -236,14 +241,14 @@ async def perform_actual_translation(translation_id, config, active_translations
                 post_processing_instructions=config.get('post_processing_instructions', '')
             )
             
-            active_translations[translation_id]['result'] = "[SRT file translated - download to view]"
+            state_manager.set_translation_field(translation_id, 'result', "[SRT file translated - download to view]")
             
         else:
             _log_message_callback("unknown_file_type", f"❌ Unknown file type: {config['file_type']}")
             raise Exception(f"Unsupported file type: {config['file_type']}")
 
         _log_message_callback("save_process_info", f"💾 Translation process ended. File saved (or partially saved) at: {output_filepath_on_server}")
-        active_translations[translation_id]['output_filepath'] = output_filepath_on_server
+        state_manager.set_translation_field(translation_id, 'output_filepath', output_filepath_on_server)
         
         # Log debug info about uploaded file path for troubleshooting
         if 'file_path' in config and config['file_path']:
@@ -253,20 +258,21 @@ async def perform_actual_translation(translation_id, config, active_translations
                 _log_message_callback("debug_file_exists", f"🔍 Debug - File exists at: {upload_path.resolve()}")
                 _log_message_callback("debug_path_parts", f"🔍 Debug - Path parts: {upload_path.resolve().parts}")
 
-        elapsed_time = time.time() - active_translations[translation_id]['stats'].get('start_time', time.time())
+        stats = state_manager.get_translation_field(translation_id, 'stats') or {}
+        elapsed_time = time.time() - stats.get('start_time', time.time())
         _update_translation_stats_callback({'elapsed_time': elapsed_time})
 
         final_status_payload = {
-            'result': active_translations[translation_id]['result'],
+            'result': state_manager.get_translation_field(translation_id, 'result'),
             'output_filename': config['output_filename'],
             'file_type': config['file_type']
         }
         
-        if active_translations[translation_id].get('interrupted', False):
-            active_translations[translation_id]['status'] = 'interrupted'
+        if state_manager.get_translation_field(translation_id, 'interrupted'):
+            state_manager.set_translation_field(translation_id, 'status', 'interrupted')
             _log_message_callback("summary_interrupted", f"🛑 Translation interrupted by user. Partial result saved. Time: {elapsed_time:.2f}s.")
             final_status_payload['status'] = 'interrupted'
-            final_status_payload['progress'] = active_translations[translation_id].get('progress', 0)
+            final_status_payload['progress'] = state_manager.get_translation_field(translation_id, 'progress') or 0
             
             # Also clean up uploaded file on interruption if translation produced output
             if 'file_path' in config and config['file_path'] and os.path.exists(output_filepath_on_server):
@@ -311,8 +317,8 @@ async def perform_actual_translation(translation_id, config, active_translations
                     except Exception as e:
                         _log_message_callback("cleanup_error", f"⚠️ Could not delete uploaded file {upload_path.name}: {str(e)}")
 
-        elif active_translations[translation_id].get('status') != 'error':
-            active_translations[translation_id]['status'] = 'completed'
+        elif state_manager.get_translation_field(translation_id, 'status') != 'error':
+            state_manager.set_translation_field(translation_id, 'status', 'completed')
             _log_message_callback("summary_completed", f"✅ Translation completed. Time: {elapsed_time:.2f}s.")
             final_status_payload['status'] = 'completed'
             _update_translation_progress_callback(100)
@@ -367,17 +373,18 @@ async def perform_actual_translation(translation_id, config, active_translations
         else:
             _log_message_callback("summary_error_final", f"❌ Translation finished with errors. Time: {elapsed_time:.2f}s.")
             final_status_payload['status'] = 'error'
-            final_status_payload['error'] = active_translations[translation_id].get('error', 'Unknown error during finalization.')
-            final_status_payload['progress'] = active_translations[translation_id].get('progress', 0)
+            final_status_payload['error'] = state_manager.get_translation_field(translation_id, 'error') or 'Unknown error during finalization.'
+            final_status_payload['progress'] = state_manager.get_translation_field(translation_id, 'progress') or 0
         
-        if config['file_type'] == 'txt' or (config['file_type'] == 'epub' and active_translations[translation_id]['stats'].get('total_chunks', 0) > 0):
-            final_stats = active_translations[translation_id]['stats']
+        stats = state_manager.get_translation_field(translation_id, 'stats') or {}
+        if config['file_type'] == 'txt' or (config['file_type'] == 'epub' and stats.get('total_chunks', 0) > 0):
+            final_stats = stats
             _log_message_callback("summary_stats_final", f"📊 Stats: {final_stats.get('completed_chunks', 0)} processed, {final_stats.get('failed_chunks', 0)} failed out of {final_stats.get('total_chunks', 0)} total segments/chunks.")
-        elif config['file_type'] == 'srt' and active_translations[translation_id]['stats'].get('total_subtitles', 0) > 0:
-            final_stats = active_translations[translation_id]['stats']
+        elif config['file_type'] == 'srt' and stats.get('total_subtitles', 0) > 0:
+            final_stats = stats
             _log_message_callback("summary_stats_final", f"📊 Stats: {final_stats.get('completed_subtitles', 0)} processed, {final_stats.get('failed_subtitles', 0)} failed out of {final_stats.get('total_subtitles', 0)} total subtitles.")
         
-        emit_update(socketio, translation_id, final_status_payload, active_translations)
+        emit_update(socketio, translation_id, final_status_payload, state_manager)
 
     except Exception as e:
         critical_error_msg = f"Critical error during translation task ({translation_id}): {str(e)}"
@@ -388,32 +395,32 @@ async def perform_actual_translation(translation_id, config, active_translations
         _log_message_callback("critical_error_perform_task_traceback", tb_str)
         print(tb_str)
 
-        if translation_id in active_translations:
-            active_translations[translation_id]['status'] = 'error'
-            active_translations[translation_id]['error'] = critical_error_msg
+        if state_manager.exists(translation_id):
+            state_manager.set_translation_field(translation_id, 'status', 'error')
+            state_manager.set_translation_field(translation_id, 'error', critical_error_msg)
             
             emit_update(socketio, translation_id, {
                 'error': critical_error_msg, 
                 'status': 'error',
-                'result': active_translations[translation_id].get('result', f"Translation failed: {critical_error_msg}"),
-                'progress': active_translations[translation_id].get('progress', 0)
-            }, active_translations)
+                'result': state_manager.get_translation_field(translation_id, 'result') or f"Translation failed: {critical_error_msg}",
+                'progress': state_manager.get_translation_field(translation_id, 'progress') or 0
+            }, state_manager)
 
 
-def start_translation_job(translation_id, config, active_translations, output_dir, socketio):
+def start_translation_job(translation_id, config, state_manager, output_dir, socketio):
     """
     Start a translation job in a separate thread
     
     Args:
         translation_id (str): Translation job ID
         config (dict): Translation configuration
-        active_translations (dict): Active translations dictionary
+        state_manager: State manager instance
         output_dir (str): Output directory path
         socketio: SocketIO instance
     """
     thread = threading.Thread(
         target=run_translation_async_wrapper,
-        args=(translation_id, config, active_translations, output_dir, socketio)
+        args=(translation_id, config, state_manager, output_dir, socketio)
     )
     thread.daemon = True
     thread.start()
