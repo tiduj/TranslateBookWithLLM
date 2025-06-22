@@ -33,10 +33,10 @@ DEFAULT_SOURCE_LANGUAGE = os.getenv('DEFAULT_SOURCE_LANGUAGE', 'English')
 DEFAULT_TARGET_LANGUAGE = os.getenv('DEFAULT_TARGET_LANGUAGE', 'French')
 
 # Translation tags
-TRANSLATE_TAG_IN = "<TRANSLATED>"
-TRANSLATE_TAG_OUT = "</TRANSLATED>"
-INPUT_TAG_IN = "<TO TRANSLATE>"
-INPUT_TAG_OUT = "</TO TRANSLATE>"
+TRANSLATE_TAG_IN = "<COMPLETED>"
+TRANSLATE_TAG_OUT = "</COMPLETED>"
+INPUT_TAG_IN = "<TODO>"
+INPUT_TAG_OUT = "</TODO>"
 
 # Sentence terminators
 SENTENCE_TERMINATORS = tuple(list(".!?") + ['."', '?"', '!"', '."', ".'", "?'", "!'", ":", ".)"])
