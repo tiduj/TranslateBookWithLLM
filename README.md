@@ -9,7 +9,7 @@
 - 📚 **Multiple Format Support**: Translate plain text (.txt), book (.EPUB) and subtitle (.SRT) files while preserving formatting
 - 🌐 **Web Interface**: User-friendly browser-based interface
 - 💻 **CLI Support**: Command-line interface for automation and scripting
-- 🤖 **Multiple LLM Providers**: Support for both local Ollama models and Google Gemini API
+- 🤖 **Multiple LLM Providers**: Support for both local Ollama models OpenAI and Google Gemini API
 - 🐳 **Docker Support**: Easy deployment with Docker container
 
 ## Windows Installation Guide
