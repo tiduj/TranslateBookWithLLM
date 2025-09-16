@@ -789,6 +789,8 @@ async def translate_epub_file(input_filepath, output_filepath,
             if llm_provider == "gemini" and gemini_api_key:
                 llm_client = LLMClient(provider_type="gemini", api_key=gemini_api_key, model=model_name)
             elif cli_api_endpoint and cli_api_endpoint != default_client.api_endpoint:
+                llm_client = LLMClient(provider_type="openai", api_endpoint=cli_api_endpoint, model=model_name)
+            elif cli_api_endpoint and cli_api_endpoint != default_client.api_endpoint:
                 llm_client = LLMClient(provider_type="ollama", api_endpoint=cli_api_endpoint, model=model_name)
 
             last_successful_llm_context = ""

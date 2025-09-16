@@ -112,6 +112,8 @@ def create_llm_client(llm_provider: str, gemini_api_key: Optional[str],
     """
     if llm_provider == "gemini" and gemini_api_key:
         return LLMClient(provider_type="gemini", api_key=gemini_api_key, model=model_name)
+    if llm_provider == "openai":
+        return LLMClient(provider_type="openai", api_endpoint=api_endpoint, model=model_name)
     elif api_endpoint and api_endpoint != default_client.api_endpoint:
         return LLMClient(provider_type="ollama", api_endpoint=api_endpoint, model=model_name)
     return None

@@ -125,6 +125,71 @@ class OllamaProvider(LLMProvider):
         return None
 
 
+class OpenAICompatibleProvider(LLMProvider):
+    """OpenAI compatible API provider"""
+    
+    def __init__(self, api_endpoint: str, model: str, api_key: Optional[str] = None):
+        super().__init__(model)
+        self.api_endpoint = api_endpoint
+        self.api_key = api_key
+    
+    async def generate(self, prompt: str, timeout: int = REQUEST_TIMEOUT) -> Optional[str]:
+        """Generate text using an OpenAI compatible API"""
+        headers = {"Content-Type": "application/json"}
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
+        payload = {
+            "model": self.model,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": False,
+        }
+        
+        client = await self._get_client()
+        for attempt in range(MAX_TRANSLATION_ATTEMPTS):
+            try:
+                response = await client.post(
+                    self.api_endpoint, 
+                    json=payload, 
+                    headers=headers,
+                    timeout=timeout
+                )
+                response.raise_for_status()
+                
+                response_json = response.json()
+                response_text = response_json.get("choices", [{}])[0].get("message", {}).get("content", "")
+                return response_text
+                
+            except httpx.TimeoutException as e:
+                    print(f"OpenAI API Timeout (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
+                    if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
+                        await asyncio.sleep(RETRY_DELAY_SECONDS)
+                        continue
+                    return None
+            except httpx.HTTPStatusError as e:
+                    print(f"OpenAI API HTTP Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
+                    if hasattr(e, 'response') and hasattr(e.response, 'text'):
+                        print(f"Response details: Status {e.response.status_code}, Body: {e.response.text[:500]}...")
+                    if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
+                        await asyncio.sleep(RETRY_DELAY_SECONDS)
+                        continue
+                    return None
+            except json.JSONDecodeError as e:
+                    print(f"OpenAI API JSON Decode Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
+                    if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
+                        await asyncio.sleep(RETRY_DELAY_SECONDS)
+                        continue
+                    return None
+            except Exception as e:
+                    print(f"OpenAI API Unknown Error (attempt {attempt + 1}/{MAX_TRANSLATION_ATTEMPTS}): {e}")
+                    if attempt < MAX_TRANSLATION_ATTEMPTS - 1:
+                        await asyncio.sleep(RETRY_DELAY_SECONDS)
+                        continue
+                    return None
+                    
+        return None
+
+
 class GeminiProvider(LLMProvider):
     """Google Gemini API provider"""
     
@@ -270,6 +335,12 @@ def create_llm_provider(provider_type: str = "ollama", **kwargs) -> LLMProvider:
         return OllamaProvider(
             api_endpoint=kwargs.get("api_endpoint", API_ENDPOINT),
             model=kwargs.get("model", DEFAULT_MODEL)
+        )
+    elif provider_type.lower() == "openai":
+        return OpenAICompatibleProvider(
+            api_endpoint=kwargs.get("api_endpoint"),
+            model=kwargs.get("model", DEFAULT_MODEL),
+            api_key=kwargs.get("api_key")
         )
     elif provider_type.lower() == "gemini":
         api_key = kwargs.get("api_key")
