@@ -340,7 +340,7 @@ def create_llm_provider(provider_type: str = "ollama", **kwargs) -> LLMProvider:
         return OpenAICompatibleProvider(
             api_endpoint=kwargs.get("api_endpoint"),
             model=kwargs.get("model", DEFAULT_MODEL),
-            api_key=kwargs.get("api_key")
+            api_key=kwargs.get("api_key", None)    # Use the new param
         )
     elif provider_type.lower() == "gemini":
         api_key = kwargs.get("api_key")
