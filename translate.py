@@ -88,6 +88,7 @@ if __name__ == "__main__":
             llm_provider=args.provider,
             gemini_api_key=args.gemini_api_key,
             enable_post_processing=args.post_process,
+            openai_api_key=args.openai_api_key,
             post_processing_instructions=args.post_process_instructions
         ))
         
