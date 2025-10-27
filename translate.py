@@ -25,6 +25,7 @@ if __name__ == "__main__":
     parser.add_argument("--post-process", action="store_true", help="Enable post-processing to improve translation quality.")
     parser.add_argument("--post-process-instructions", default="", help="Additional instructions for post-processing.")
     parser.add_argument("--no-color", action="store_true", help="Disable colored output.")
+    parser.add_argument("--openai_api_key", default=os.getenv("OPENAI_API_KEY", ""), help="OpenAI API key (required if using openai provider).")    
 
     args = parser.parse_args()
 
